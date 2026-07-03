@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     APP_SECRET_KEY: str
     API_V1_PREFIX: str = "/api/v1"
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    FRONTEND_URL: str = "http://localhost:5173"
 
     DATABASE_URL: str
 

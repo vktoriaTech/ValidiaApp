@@ -29,5 +29,7 @@ class User(BaseModel):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    password_reset_token: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    password_reset_expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     tenant = relationship("Tenant", back_populates=None, foreign_keys=[tenant_id])
