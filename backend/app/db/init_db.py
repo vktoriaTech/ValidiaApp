@@ -1,17 +1,8 @@
-from app.models.base import Base
 from app.db.session import engine
+from app.models.base import Base
 
-# Import all models so SQLAlchemy registers them before create_all
-from app.models import (  # noqa: F401
-    audit_log,
-    campaign,
-    invoice,
-    participant,
-    participation,
-    pos,
-    tenant,
-    user,
-)
+# Import all models so SQLAlchemy registers them before create_all.
+import app.models  # noqa: F401
 
 
 def init_db() -> None:
