@@ -27,6 +27,23 @@ def send_email(*, to_email: str, subject: str, body: str) -> None:
         logger.exception("Error enviando email a %s", to_email)
 
 
+def send_temp_password_email(*, to_email: str, full_name: str, temp_password: str) -> None:
+    login_link = f"{settings.FRONTEND_URL}/login"
+    body = (
+        f"Hola {full_name},\n\n"
+        f"Tu cuenta en {settings.APP_NAME} ha sido creada.\n\n"
+        f"Tu contraseña temporal es: {temp_password}\n\n"
+        f"Ingresa al portal en: {login_link}\n\n"
+        "Deberás cambiar tu contraseña en tu primer inicio de sesión.\n\n"
+        "Si tienes alguna pregunta, contacta a tu administrador."
+    )
+    send_email(
+        to_email=to_email,
+        subject=f"Bienvenido a {settings.APP_NAME} — Credenciales de acceso",
+        body=body,
+    )
+
+
 def send_password_reset_email(*, to_email: str, reset_token: str) -> None:
     reset_link = f"{settings.FRONTEND_URL}/reset-password?token={reset_token}"
     body = (

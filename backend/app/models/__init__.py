@@ -5,6 +5,7 @@ from .invoice import Invoice, ValidationStatus
 from .participant import Participant
 from .participation import Participation
 from .pos import POS
+from .subscription import PLAN_MAX_USERS, Subscription, SubscriptionPlan, SubscriptionStatus
 from .tenant import Tenant, TenantStatus
 from .user import User, UserRole
 
@@ -23,4 +24,8 @@ __all__ = [
     "ValidationStatus",
     "Participation",
     "AuditLog",
+    "Subscription",
+    "SubscriptionPlan",
+    "SubscriptionStatus",
+    "PLAN_MAX_USERS",
 ]
