@@ -1,15 +1,15 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.core.security import validate_password_policy
 from app.models.user import UserRole
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
+    email: EmailStr = Field(examples=["admin@validia.co"])
+    password: str = Field(examples=["Admin2026!"])
 
 
 class UserSummary(BaseModel):

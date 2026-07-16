@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     CUFE_PROVIDER_URL: str = ""
     CUFE_PROVIDER_API_KEY: str = ""
 
+    CUFE_SERVICE_URL: str = "http://localhost:8000"
+    CUFE_SERVICE_API_KEY: str = ""
+
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
