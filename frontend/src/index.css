@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --v-magenta: #FF0080;
+  --v-magenta-deep: #CC006B;
+  --v-night: #0D0D0D;
+  --v-white: #FFFFFF;
+  --v-gray-50: #F9FAFB;
+  --v-border: #E5E7EB;
+}
+
+body {
+  margin: 0;
+  font-family: 'Poppins', system-ui, sans-serif;
+  color: var(--v-night);
+  background-color: var(--v-gray-50);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Montserrat', system-ui, sans-serif;
+}
