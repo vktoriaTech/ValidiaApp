@@ -10,6 +10,14 @@ export async function createUser(tenantId, payload) {
   return data
 }
 
+export async function updateUser(tenantId, userId, payload) {
+  const { data } = await api.put(
+    `/api/v1/tenants/${tenantId}/users/${userId}`,
+    payload,
+  )
+  return data
+}
+
 export async function updateUserStatus(tenantId, id, payload) {
   const { data } = await api.patch(
     `/api/v1/tenants/${tenantId}/users/${id}/status`,

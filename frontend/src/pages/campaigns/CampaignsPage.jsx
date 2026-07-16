@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useAuthStore } from '../../store/authStore'
 import { useActiveTenant } from '../../hooks/useActiveTenant'
 import {
   createCampaign,
@@ -6,11 +7,13 @@ import {
   updateCampaignStatus,
 } from '../../services/campaignService'
 import { getActivePOS } from '../../services/posService'
+import { getTenants } from '../../services/tenantService'
 import Table from '../../components/ui/Table'
 import Badge from '../../components/ui/Badge'
 import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
+import TableFilters from '../../components/ui/TableFilters'
 import TenantSwitcher from '../../components/layout/TenantSwitcher'
 
 const ACTIVITY_TYPE_LABELS = {
@@ -34,7 +37,15 @@ const PRIZE_TYPE_LABELS = {
   servicio: 'Servicio',
 }
 
-const STEPS = ['Datos generales', 'POS y mecánica', 'Premios', 'Resumen']
+const STATUS_OPTIONS = [
+  { value: 'all', label: 'Todos' },
+  { value: 'draft', label: 'Borrador' },
+  { value: 'active', label: 'Activa' },
+  { value: 'paused', label: 'Pausada' },
+  { value: 'closed', label: 'Cerrada' },
+]
+
+const STEPS = ['Cliente', 'Datos generales', 'POS y mecánica', 'Premios', 'Resumen']
 
 function emptyForm() {
   return {
@@ -50,6 +61,8 @@ function emptyForm() {
 }
 
 export default function CampaignsPage() {
+  const authUser = useAuthStore((state) => state.user)
+  const authTenant = useAuthStore((state) => state.tenant)
   const { tenantId, tenants, setTenantId, isSuperAdmin, loading: tenantLoading } =
     useActiveTenant()
 
@@ -58,6 +71,11 @@ export default function CampaignsPage() {
   const [pages, setPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [sortKey, setSortKey] = useState(null)
+  const [sortDir, setSortDir] = useState('asc')
 
   const [isModalOpen, setModalOpen] = useState(false)
   const [step, setStep] = useState(0)
@@ -68,6 +86,14 @@ export default function CampaignsPage() {
 
   const [activePOS, setActivePOS] = useState([])
   const [posLoading, setPosLoading] = useState(false)
+
+  const [wizardTenantId, setWizardTenantId] = useState(null)
+  const [wizardTenantName, setWizardTenantName] = useState('')
+  const [clienteOptions, setClienteOptions] = useState([])
+  const [clienteSearch, setClienteSearch] = useState('')
+  const [clienteLoading, setClienteLoading] = useState(false)
+
+  const firstStep = isSuperAdmin ? 0 : 1
 
   async function loadCampaigns() {
     if (!tenantId) return
@@ -89,20 +115,102 @@ export default function CampaignsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, page])
 
+  function handleSort(key) {
+    if (sortKey === key) {
+      setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
+  const visibleRows = useMemo(() => {
+    let result = campaigns
+
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      result = result.filter((campaign) => campaign.name?.toLowerCase().includes(q))
+    }
+
+    if (statusFilter !== 'all') {
+      result = result.filter((campaign) => campaign.status === statusFilter)
+    }
+
+    if (sortKey) {
+      result = [...result].sort((a, b) => {
+        const av = a[sortKey] ?? ''
+        const bv = b[sortKey] ?? ''
+        if (av < bv) return sortDir === 'asc' ? -1 : 1
+        if (av > bv) return sortDir === 'asc' ? 1 : -1
+        return 0
+      })
+    }
+
+    return result
+  }, [campaigns, search, statusFilter, sortKey, sortDir])
+
+  const filteredClienteOptions = useMemo(() => {
+    if (!clienteSearch.trim()) return clienteOptions
+    const q = clienteSearch.trim().toLowerCase()
+    return clienteOptions.filter(
+      (cliente) =>
+        cliente.name?.toLowerCase().includes(q) ||
+        cliente.nit?.toLowerCase().includes(q),
+    )
+  }, [clienteOptions, clienteSearch])
+
   async function openModal() {
     setForm(emptyForm())
     setFormError('')
-    setStep(0)
-    setModalOpen(true)
-    setPosLoading(true)
-    try {
-      const data = await getActivePOS(tenantId)
-      setActivePOS(data)
-    } catch {
-      setActivePOS([])
-    } finally {
-      setPosLoading(false)
+    setActivePOS([])
+    setClienteSearch('')
+
+    if (isSuperAdmin) {
+      setWizardTenantId(null)
+      setWizardTenantName('')
+      setStep(0)
+      setModalOpen(true)
+      setClienteLoading(true)
+      try {
+        const data = await getTenants({ page: 1, limit: 100 })
+        setClienteOptions(data.items || [])
+      } catch {
+        setClienteOptions([])
+      } finally {
+        setClienteLoading(false)
+      }
+    } else {
+      setWizardTenantId(tenantId)
+      setWizardTenantName(authTenant?.name || authUser?.tenant_name || '')
+      setStep(1)
+      setModalOpen(true)
     }
+  }
+
+  function selectCliente(cliente) {
+    setWizardTenantId(cliente.id)
+    setWizardTenantName(cliente.name)
+  }
+
+  function clearCliente() {
+    setWizardTenantId(null)
+    setWizardTenantName('')
+  }
+
+  async function handleNext() {
+    const nextStep = step + 1
+    if (nextStep === 2) {
+      setPosLoading(true)
+      try {
+        const data = await getActivePOS(wizardTenantId)
+        setActivePOS(data)
+      } catch {
+        setActivePOS([])
+      } finally {
+        setPosLoading(false)
+      }
+    }
+    setStep(nextStep)
   }
 
   function updatePrize(index, field, value) {
@@ -125,7 +233,8 @@ export default function CampaignsPage() {
   }
 
   function canAdvance() {
-    if (step === 0) return form.name.trim().length > 0
+    if (step === 0) return Boolean(wizardTenantId)
+    if (step === 1) return form.name.trim().length > 0
     return true
   }
 
@@ -133,7 +242,7 @@ export default function CampaignsPage() {
     setFormError('')
     setSaving(true)
     try {
-      await createCampaign(tenantId, {
+      await createCampaign(wizardTenantId, {
         name: form.name,
         description: form.description || null,
         activity_type: form.activity_type,
@@ -175,16 +284,18 @@ export default function CampaignsPage() {
   }
 
   const columns = [
-    { key: 'name', header: 'Nombre' },
+    { key: 'name', header: 'Nombre', sortable: true },
     {
       key: 'activity_type',
       header: 'Tipo',
+      sortable: true,
       render: (row) =>
         ACTIVITY_TYPE_LABELS[row.activity_type] || row.activity_type || '—',
     },
     {
       key: 'status',
       header: 'Estado',
+      sortable: true,
       render: (row) => {
         const badge = STATUS_BADGE[row.status] || STATUS_BADGE.draft
         return <Badge color={badge.color}>{badge.label}</Badge>
@@ -193,12 +304,14 @@ export default function CampaignsPage() {
     {
       key: 'starts_at',
       header: 'Fecha inicio',
+      sortable: true,
       render: (row) =>
         row.starts_at ? new Date(row.starts_at).toLocaleDateString('es-CO') : '—',
     },
     {
       key: 'ends_at',
       header: 'Fecha fin',
+      sortable: true,
       render: (row) =>
         row.ends_at ? new Date(row.ends_at).toLocaleDateString('es-CO') : '—',
     },
@@ -222,21 +335,28 @@ export default function CampaignsPage() {
   ]
 
   if (isSuperAdmin && tenantLoading) {
-    return <p className="text-sm text-gray-500">Cargando tenants...</p>
+    return <p className="text-sm text-gray-500">Cargando clientes...</p>
   }
 
   if (!tenantId) {
     return (
       <p className="text-sm text-gray-500">
-        No hay un tenant disponible para mostrar las campañas.
+        No hay un cliente disponible para mostrar las campañas.
       </p>
     )
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-gray-500">Gestiona las campañas del tenant.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <TableFilters
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Buscar por nombre..."
+          statusOptions={STATUS_OPTIONS}
+          statusValue={statusFilter}
+          onStatusChange={setStatusFilter}
+        />
         <div className="flex items-center gap-3">
           {isSuperAdmin && (
             <TenantSwitcher
@@ -260,11 +380,14 @@ export default function CampaignsPage() {
 
       <Table
         columns={columns}
-        rows={campaigns}
+        rows={visibleRows}
         loading={loading}
         page={page}
         pages={pages}
         onPageChange={setPage}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSort={handleSort}
         emptyMessage="No hay campañas registradas."
       />
 
@@ -284,7 +407,7 @@ export default function CampaignsPage() {
                     : 'bg-v-gray-50 text-gray-400'
                 }`}
               >
-                {index + 1}
+                {index}
               </div>
               <span
                 className={`hidden text-xs font-medium sm:block ${
@@ -301,6 +424,71 @@ export default function CampaignsPage() {
         </div>
 
         {step === 0 && (
+          <div className="flex flex-col gap-4">
+            {wizardTenantId ? (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full bg-v-gray-50 px-3 py-1.5 text-sm font-medium text-v-night">
+                  {wizardTenantName}
+                  <button
+                    type="button"
+                    onClick={clearCliente}
+                    aria-label="Quitar cliente seleccionado"
+                    className="text-gray-400 hover:text-red-500"
+                  >
+                    <svg
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </span>
+              </div>
+            ) : (
+              <>
+                <Input
+                  id="campaign-cliente-search"
+                  label="Cliente"
+                  placeholder="Buscar cliente por nombre o NIT..."
+                  value={clienteSearch}
+                  onChange={(e) => setClienteSearch(e.target.value)}
+                />
+                {clienteLoading ? (
+                  <p className="text-sm text-gray-400">Cargando clientes...</p>
+                ) : filteredClienteOptions.length === 0 ? (
+                  <p className="text-sm text-gray-400">
+                    No se encontraron clientes.
+                  </p>
+                ) : (
+                  <div className="flex max-h-56 flex-col gap-2 overflow-y-auto">
+                    {filteredClienteOptions.map((cliente) => (
+                      <button
+                        key={cliente.id}
+                        type="button"
+                        onClick={() => selectCliente(cliente)}
+                        className="rounded-lg border border-v-border px-4 py-3 text-left transition-colors hover:border-v-magenta hover:bg-v-gray-50"
+                      >
+                        <p className="text-sm font-medium text-v-night">
+                          {cliente.name}
+                        </p>
+                        <p className="text-xs text-gray-500">NIT {cliente.nit}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {step === 1 && (
           <div className="flex flex-col gap-4">
             <Input
               id="campaign-name"
@@ -367,7 +555,7 @@ export default function CampaignsPage() {
           </div>
         )}
 
-        {step === 1 && (
+        {step === 2 && (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <label
@@ -425,7 +613,7 @@ export default function CampaignsPage() {
           </div>
         )}
 
-        {step === 2 && (
+        {step === 3 && (
           <div className="flex flex-col gap-4">
             {form.prizes.map((prize, index) => (
               <div
@@ -490,8 +678,12 @@ export default function CampaignsPage() {
           </div>
         )}
 
-        {step === 3 && (
+        {step === 4 && (
           <div className="flex flex-col gap-4 text-sm">
+            <div>
+              <p className="text-xs text-gray-400">Cliente</p>
+              <p className="font-medium text-v-night">{wizardTenantName || '—'}</p>
+            </div>
             <div>
               <p className="font-medium text-v-night">{form.name || '—'}</p>
               <p className="text-gray-500">
@@ -543,16 +735,14 @@ export default function CampaignsPage() {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => (step === 0 ? setModalOpen(false) : setStep(step - 1))}
+            onClick={() =>
+              step === firstStep ? setModalOpen(false) : setStep(step - 1)
+            }
           >
-            {step === 0 ? 'Cancelar' : 'Atrás'}
+            {step === firstStep ? 'Cancelar' : 'Atrás'}
           </Button>
           {step < STEPS.length - 1 ? (
-            <Button
-              type="button"
-              disabled={!canAdvance()}
-              onClick={() => setStep(step + 1)}
-            >
+            <Button type="button" disabled={!canAdvance()} onClick={handleNext}>
               Siguiente
             </Button>
           ) : (

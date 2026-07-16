@@ -1,5 +1,32 @@
 import Spinner from './Spinner'
 
+function SortIcon({ direction }) {
+  return (
+    <svg
+      className="h-3.5 w-3.5"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      {direction === 'asc' ? (
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M5 15l7-7 7 7"
+        />
+      ) : (
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M19 9l-7 7-7-7"
+        />
+      )}
+    </svg>
+  )
+}
+
 export default function Table({
   columns,
   rows,
@@ -9,6 +36,9 @@ export default function Table({
   page = 1,
   pages = 1,
   onPageChange,
+  sortKey,
+  sortDir = 'asc',
+  onSort,
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-v-border bg-v-white">
@@ -19,9 +49,17 @@ export default function Table({
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500"
+                  onClick={col.sortable ? () => onSort?.(col.key) : undefined}
+                  className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 ${
+                    col.sortable ? 'cursor-pointer select-none hover:text-v-night' : ''
+                  }`}
                 >
-                  {col.header}
+                  <span className="inline-flex items-center gap-1">
+                    {col.header}
+                    {col.sortable && sortKey === col.key && (
+                      <SortIcon direction={sortDir} />
+                    )}
+                  </span>
                 </th>
               ))}
             </tr>

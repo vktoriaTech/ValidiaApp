@@ -23,7 +23,7 @@ export function useActiveTenant() {
         setTenantId((current) => current ?? data.items?.[0]?.id ?? null)
       })
       .catch(() => {
-        if (active) setError('No fue posible cargar la lista de tenants.')
+        if (active) setError('No fue posible cargar la lista de clientes.')
       })
       .finally(() => {
         if (active) setLoading(false)

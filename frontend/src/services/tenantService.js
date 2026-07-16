@@ -15,6 +15,11 @@ export async function createTenant(payload) {
   return data
 }
 
+export async function updateTenant(id, payload) {
+  const { data } = await api.put(`/api/v1/tenants/${id}`, payload)
+  return data
+}
+
 export async function updateTenantStatus(id, payload) {
   const { data } = await api.patch(`/api/v1/tenants/${id}/status`, payload)
   return data

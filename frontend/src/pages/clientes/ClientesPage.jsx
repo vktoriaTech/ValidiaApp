@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import {
   createTenant,
@@ -10,6 +11,7 @@ import Badge from '../../components/ui/Badge'
 import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
+import TableFilters from '../../components/ui/TableFilters'
 
 const STATUS_BADGE = {
   active: { color: 'green', label: 'Activo' },
@@ -17,17 +19,29 @@ const STATUS_BADGE = {
   inactive: { color: 'gray', label: 'Inactivo' },
 }
 
+const STATUS_OPTIONS = [
+  { value: 'all', label: 'Todos' },
+  { value: 'active', label: 'Activo' },
+  { value: 'inactive', label: 'Inactivo' },
+  { value: 'suspended', label: 'Suspendido' },
+]
+
 const EMPTY_FORM = { name: '', slug: '', nit: '', whatsapp_number: '' }
 
-export default function TenantsPage() {
+export default function ClientesPage() {
   const user = useAuthStore((state) => state.user)
   const isSuperAdmin = user?.role === 'super_admin'
 
-  const [tenants, setTenants] = useState([])
+  const [clientes, setClientes] = useState([])
   const [page, setPage] = useState(1)
   const [pages, setPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [sortKey, setSortKey] = useState(null)
+  const [sortDir, setSortDir] = useState('asc')
 
   const [isModalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
@@ -35,15 +49,15 @@ export default function TenantsPage() {
   const [saving, setSaving] = useState(false)
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
 
-  async function loadTenants() {
+  async function loadClientes() {
     setLoading(true)
     setError('')
     try {
       const data = await getTenants({ page, limit: 20 })
-      setTenants(data.items)
+      setClientes(data.items)
       setPages(data.pages || 1)
     } catch {
-      setError('No fue posible cargar los tenants.')
+      setError('No fue posible cargar los clientes.')
     } finally {
       setLoading(false)
     }
@@ -51,9 +65,47 @@ export default function TenantsPage() {
 
   useEffect(() => {
     if (!isSuperAdmin) return
-    loadTenants()
+    loadClientes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, isSuperAdmin])
+
+  function handleSort(key) {
+    if (sortKey === key) {
+      setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
+  const visibleRows = useMemo(() => {
+    let result = clientes
+
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      result = result.filter((cliente) =>
+        [cliente.name, cliente.nit, cliente.slug].some((value) =>
+          value?.toLowerCase().includes(q),
+        ),
+      )
+    }
+
+    if (statusFilter !== 'all') {
+      result = result.filter((cliente) => cliente.status === statusFilter)
+    }
+
+    if (sortKey) {
+      result = [...result].sort((a, b) => {
+        const av = a[sortKey] ?? ''
+        const bv = b[sortKey] ?? ''
+        if (av < bv) return sortDir === 'asc' ? -1 : 1
+        if (av > bv) return sortDir === 'asc' ? 1 : -1
+        return 0
+      })
+    }
+
+    return result
+  }, [clientes, search, statusFilter, sortKey, sortDir])
 
   if (!isSuperAdmin) {
     return (
@@ -82,36 +134,49 @@ export default function TenantsPage() {
       })
       setModalOpen(false)
       setPage(1)
-      await loadTenants()
+      await loadClientes()
     } catch (err) {
       setFormError(
-        err.response?.data?.detail || 'No fue posible crear el tenant.',
+        err.response?.data?.detail || 'No fue posible crear el cliente.',
       )
     } finally {
       setSaving(false)
     }
   }
 
-  async function toggleStatus(tenant) {
-    const nextStatus = tenant.status === 'active' ? 'suspended' : 'active'
-    setStatusUpdatingId(tenant.id)
+  async function toggleStatus(cliente) {
+    const nextStatus = cliente.status === 'active' ? 'suspended' : 'active'
+    setStatusUpdatingId(cliente.id)
     try {
-      await updateTenantStatus(tenant.id, { status: nextStatus })
-      await loadTenants()
+      await updateTenantStatus(cliente.id, { status: nextStatus })
+      await loadClientes()
     } catch {
-      setError('No fue posible actualizar el estado del tenant.')
+      setError('No fue posible actualizar el estado del cliente.')
     } finally {
       setStatusUpdatingId(null)
     }
   }
 
   const columns = [
-    { key: 'name', header: 'Nombre' },
-    { key: 'slug', header: 'Slug' },
-    { key: 'nit', header: 'NIT' },
+    {
+      key: 'name',
+      header: 'Nombre',
+      sortable: true,
+      render: (row) => (
+        <Link
+          to={`/clientes/${row.id}`}
+          className="font-medium text-v-night hover:text-v-magenta hover:underline"
+        >
+          {row.name}
+        </Link>
+      ),
+    },
+    { key: 'slug', header: 'Slug', sortable: true },
+    { key: 'nit', header: 'NIT', sortable: true },
     {
       key: 'status',
       header: 'Estado',
+      sortable: true,
       render: (row) => {
         const badge = STATUS_BADGE[row.status] || STATUS_BADGE.inactive
         return <Badge color={badge.color}>{badge.label}</Badge>
@@ -120,31 +185,45 @@ export default function TenantsPage() {
     {
       key: 'created_at',
       header: 'Fecha creación',
+      sortable: true,
       render: (row) => new Date(row.created_at).toLocaleDateString('es-CO'),
     },
     {
       key: 'actions',
       header: 'Acciones',
       render: (row) => (
-        <Button
-          variant="secondary"
-          disabled={statusUpdatingId === row.id}
-          onClick={() => toggleStatus(row)}
-          className="!px-3 !py-1.5 text-xs"
-        >
-          {row.status === 'active' ? 'Suspender' : 'Activar'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link
+            to={`/clientes/${row.id}`}
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-v-night hover:bg-v-gray-50"
+          >
+            Ver detalle
+          </Link>
+          <Button
+            variant="secondary"
+            disabled={statusUpdatingId === row.id}
+            onClick={() => toggleStatus(row)}
+            className="!px-3 !py-1.5 text-xs"
+          >
+            {row.status === 'active' ? 'Suspender' : 'Activar'}
+          </Button>
+        </div>
       ),
     },
   ]
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">
-          Gestiona los tenants de la plataforma.
-        </p>
-        <Button onClick={openModal}>Nuevo tenant</Button>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <TableFilters
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Buscar por nombre, NIT o slug..."
+          statusOptions={STATUS_OPTIONS}
+          statusValue={statusFilter}
+          onStatusChange={setStatusFilter}
+        />
+        <Button onClick={openModal}>Nuevo cliente</Button>
       </div>
 
       {error && (
@@ -155,43 +234,46 @@ export default function TenantsPage() {
 
       <Table
         columns={columns}
-        rows={tenants}
+        rows={visibleRows}
         loading={loading}
         page={page}
         pages={pages}
         onPageChange={setPage}
-        emptyMessage="No hay tenants registrados."
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSort={handleSort}
+        emptyMessage="No hay clientes registrados."
       />
 
       <Modal
         isOpen={isModalOpen}
         onClose={() => setModalOpen(false)}
-        title="Nuevo tenant"
+        title="Nuevo cliente"
       >
         <form onSubmit={handleCreate} className="flex flex-col gap-4">
           <Input
-            id="tenant-name"
+            id="cliente-name"
             label="Nombre"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             required
           />
           <Input
-            id="tenant-slug"
+            id="cliente-slug"
             label="Slug (opcional)"
             placeholder="se genera automáticamente si se deja vacío"
             value={form.slug}
             onChange={(e) => setForm({ ...form, slug: e.target.value })}
           />
           <Input
-            id="tenant-nit"
+            id="cliente-nit"
             label="NIT"
             value={form.nit}
             onChange={(e) => setForm({ ...form, nit: e.target.value })}
             required
           />
           <Input
-            id="tenant-whatsapp"
+            id="cliente-whatsapp"
             label="WhatsApp"
             placeholder="+57 300 000 0000"
             value={form.whatsapp_number}
@@ -215,7 +297,7 @@ export default function TenantsPage() {
               Cancelar
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? 'Guardando...' : 'Crear tenant'}
+              {saving ? 'Guardando...' : 'Crear cliente'}
             </Button>
           </div>
         </form>

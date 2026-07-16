@@ -15,6 +15,14 @@ export async function createPOS(tenantId, payload) {
   return data
 }
 
+export async function updatePOS(tenantId, posId, payload) {
+  const { data } = await api.put(
+    `/api/v1/tenants/${tenantId}/pos/${posId}`,
+    payload,
+  )
+  return data
+}
+
 export async function updatePOSStatus(tenantId, id, payload) {
   const { data } = await api.patch(
     `/api/v1/tenants/${tenantId}/pos/${id}/status`,

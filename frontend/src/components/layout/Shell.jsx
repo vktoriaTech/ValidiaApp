@@ -5,10 +5,11 @@ import Button from '../ui/Button'
 
 const PAGE_TITLES = {
   '/dashboard': 'Dashboard',
-  '/tenants': 'Tenants',
+  '/clientes': 'Clientes',
   '/campaigns': 'Campañas',
   '/pos': 'Puntos de venta',
   '/users': 'Usuarios',
+  '/configuracion': 'Configuración',
   '/profile': 'Mi perfil',
 }
 

@@ -75,13 +75,13 @@ export default function DashboardPage() {
   ]
 
   if (isSuperAdmin && tenantLoading) {
-    return <p className="text-sm text-gray-500">Cargando tenants...</p>
+    return <p className="text-sm text-gray-500">Cargando clientes...</p>
   }
 
   if (!tenantId) {
     return (
       <p className="text-sm text-gray-500">
-        No hay un tenant disponible para mostrar el dashboard.
+        No hay un cliente disponible para mostrar el dashboard.
       </p>
     )
   }
