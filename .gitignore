@@ -10,3 +10,5 @@ database/backups/
 *.sql.bak
 .DS_Store
 Thumbs.db
+validia-key.pem
+*.pem
