@@ -1,0 +1,49 @@
+services:
+
+  db:
+    image: postgres:16
+    container_name: validia-db
+    restart: always
+    environment:
+      POSTGRES_DB: validia
+      POSTGRES_USER: validia_user
+      POSTGRES_PASSWORD: ValidiaDB2026!
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - validia-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: validia-backend
+    restart: always
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    networks:
+      - validia-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: validia-frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - validia-net
+
+networks:
+  validia-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
