@@ -87,6 +87,7 @@ def _to_response(user: User) -> UserResponse:
         phone=user.phone,
         city=user.city,
         created_at=user.created_at,
+        updated_at=user.updated_at,
     )
 
 

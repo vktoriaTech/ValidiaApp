@@ -125,6 +125,8 @@ class CampaignListItem(BaseModel):
     ends_at: datetime | None
     total_participations: int
     total_invoices_accepted: int
+    created_at: datetime
+    updated_at: datetime
 
 
 class PaginatedCampaigns(BaseModel):

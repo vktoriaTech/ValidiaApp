@@ -10,15 +10,23 @@ import Badge from '../../components/ui/Badge'
 import Card from '../../components/ui/Card'
 import Spinner from '../../components/ui/Spinner'
 import Modal from '../../components/ui/Modal'
+import ConfirmModal from '../../components/ui/ConfirmModal'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import POSManager from '../../components/pos/POSManager'
 import UsersManager from '../../components/users/UsersManager'
+import { formatDateTime } from '../../utils/formatDate'
 
 const STATUS_BADGE = {
   active: { color: 'green', label: 'Activo' },
   suspended: { color: 'red', label: 'Suspendido' },
   inactive: { color: 'gray', label: 'Inactivo' },
+}
+
+const STATUS_ACTION_LABEL = {
+  active: 'activar',
+  inactive: 'inactivar',
+  suspended: 'suspender',
 }
 
 const TABS = [
@@ -48,6 +56,7 @@ export default function ClienteDetailPage() {
   const [editForm, setEditForm] = useState(null)
   const [editError, setEditError] = useState('')
   const [editSaving, setEditSaving] = useState(false)
+  const [statusConfirmOpen, setStatusConfirmOpen] = useState(false)
 
   async function loadCliente() {
     setLoading(true)
@@ -73,8 +82,16 @@ export default function ClienteDetailPage() {
     setEditOpen(true)
   }
 
-  async function handleEditSubmit(e) {
+  function handleEditSubmit(e) {
     e.preventDefault()
+    if (editForm.status !== cliente.status) {
+      setStatusConfirmOpen(true)
+      return
+    }
+    saveCliente()
+  }
+
+  async function saveCliente() {
     setEditError('')
     setEditSaving(true)
     try {
@@ -88,11 +105,13 @@ export default function ClienteDetailPage() {
         await updateTenantStatus(clienteId, { status: editForm.status })
       }
       setEditOpen(false)
+      setStatusConfirmOpen(false)
       await loadCliente()
     } catch (err) {
       setEditError(
         err.response?.data?.detail || 'No fue posible actualizar el cliente.',
       )
+      setStatusConfirmOpen(false)
     } finally {
       setEditSaving(false)
     }
@@ -195,6 +214,14 @@ export default function ClienteDetailPage() {
                 {new Date(cliente.created_at).toLocaleDateString('es-CO')}
               </dd>
             </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-gray-400">
+                Última actualización
+              </dt>
+              <dd className="mt-1 text-sm text-v-night">
+                {formatDateTime(cliente.updated_at)}
+              </dd>
+            </div>
           </dl>
         </Card>
       )}
@@ -281,6 +308,17 @@ export default function ClienteDetailPage() {
           </form>
         )}
       </Modal>
+
+      {editForm && (
+        <ConfirmModal
+          isOpen={statusConfirmOpen}
+          title="Confirmar acción"
+          message={`¿Estás seguro de que deseas ${STATUS_ACTION_LABEL[editForm.status] || 'cambiar el estado de'} a ${cliente.name}? Esta acción puede afectar el acceso al sistema.`}
+          onCancel={() => setStatusConfirmOpen(false)}
+          onConfirm={saveCliente}
+          confirming={editSaving}
+        />
+      )}
     </div>
   )
 }

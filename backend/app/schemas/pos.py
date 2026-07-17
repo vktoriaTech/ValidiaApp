@@ -41,6 +41,7 @@ class POSResponse(BaseModel):
     lng: float | None
     is_active: bool
     created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
 

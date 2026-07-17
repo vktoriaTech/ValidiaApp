@@ -5,14 +5,15 @@ import {
   updateUser,
   updateUserStatus,
 } from '../../services/userService'
-import { getActiveCityNames } from '../../services/citiesService'
 import { getRoles } from '../../services/rolesService'
 import Table from '../ui/Table'
 import Badge from '../ui/Badge'
 import Modal from '../ui/Modal'
+import ConfirmModal from '../ui/ConfirmModal'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
 import TableFilters from '../ui/TableFilters'
+import { formatDateTime } from '../../utils/formatDate'
 
 const ROLE_BADGE = {
   super_admin: { color: 'purple', label: 'Super admin' },
@@ -31,7 +32,6 @@ const EMPTY_FORM = {
   full_name: '',
   role: 'tenant_viewer',
   phone: '',
-  city: '',
 }
 
 export default function UsersManager({ tenantId, extraHeader = null }) {
@@ -43,8 +43,8 @@ export default function UsersManager({ tenantId, extraHeader = null }) {
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [sortKey, setSortKey] = useState(null)
-  const [sortDir, setSortDir] = useState('asc')
+  const [sortKey, setSortKey] = useState('created_at')
+  const [sortDir, setSortDir] = useState('desc')
 
   const [isModalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -52,8 +52,8 @@ export default function UsersManager({ tenantId, extraHeader = null }) {
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+  const [confirmTarget, setConfirmTarget] = useState(null)
 
-  const cityOptions = getActiveCityNames()
   const roleOptions = getRoles()
 
   async function loadUsers() {
@@ -133,7 +133,6 @@ export default function UsersManager({ tenantId, extraHeader = null }) {
       full_name: user.full_name || '',
       role: user.role || 'tenant_viewer',
       phone: user.phone || '',
-      city: user.city || '',
     })
     setFormError('')
     setModalOpen(true)
@@ -149,7 +148,6 @@ export default function UsersManager({ tenantId, extraHeader = null }) {
           full_name: form.full_name,
           role: form.role,
           phone: form.phone || null,
-          city: form.city || null,
         })
       } else {
         await createUser(tenantId, {
@@ -157,7 +155,6 @@ export default function UsersManager({ tenantId, extraHeader = null }) {
           full_name: form.full_name,
           role: form.role,
           phone: form.phone || null,
-          city: form.city || null,
         })
         setPage(1)
       }
@@ -173,7 +170,13 @@ export default function UsersManager({ tenantId, extraHeader = null }) {
     }
   }
 
-  async function toggleStatus(user) {
+  function requestToggleStatus(user) {
+    setConfirmTarget(user)
+  }
+
+  async function confirmToggleStatus() {
+    if (!confirmTarget) return
+    const user = confirmTarget
     setStatusUpdatingId(user.id)
     try {
       await updateUserStatus(tenantId, user.id, { is_active: !user.is_active })
@@ -182,6 +185,7 @@ export default function UsersManager({ tenantId, extraHeader = null }) {
       setError('No fue posible actualizar el estado del usuario.')
     } finally {
       setStatusUpdatingId(null)
+      setConfirmTarget(null)
     }
   }
 
@@ -193,8 +197,13 @@ export default function UsersManager({ tenantId, extraHeader = null }) {
       header: 'Rol',
       sortable: true,
       render: (row) => {
-        const badge = ROLE_BADGE[row.role] || { color: 'gray', label: row.role }
-        return <Badge color={badge.color}>{badge.label}</Badge>
+        const badge = ROLE_BADGE[row.role]
+        const roleOption = roleOptions.find((option) => option.value === row.role)
+        return (
+          <Badge color={badge?.color || 'gray'}>
+            {badge?.label || roleOption?.label || row.role}
+          </Badge>
+        )
       },
     },
     {
@@ -214,6 +223,12 @@ export default function UsersManager({ tenantId, extraHeader = null }) {
       render: (row) => new Date(row.created_at).toLocaleDateString('es-CO'),
     },
     {
+      key: 'updated_at',
+      header: 'Última actualización',
+      sortable: true,
+      render: (row) => formatDateTime(row.updated_at),
+    },
+    {
       key: 'actions',
       header: 'Acciones',
       render: (row) => (
@@ -228,7 +243,7 @@ export default function UsersManager({ tenantId, extraHeader = null }) {
           <Button
             variant="secondary"
             disabled={statusUpdatingId === row.id}
-            onClick={() => toggleStatus(row)}
+            onClick={() => requestToggleStatus(row)}
             className="!px-3 !py-1.5 text-xs"
           >
             {row.is_active ? 'Desactivar' : 'Activar'}
@@ -325,25 +340,6 @@ export default function UsersManager({ tenantId, extraHeader = null }) {
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
           />
 
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="user-city" className="text-sm font-medium text-v-night">
-              Ciudad
-            </label>
-            <select
-              id="user-city"
-              value={form.city}
-              onChange={(e) => setForm({ ...form, city: e.target.value })}
-              className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
-            >
-              <option value="">Selecciona una ciudad</option>
-              {cityOptions.map((city) => (
-                <option key={city} value={city}>
-                  {city}
-                </option>
-              ))}
-            </select>
-          </div>
-
           {formError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
               {formError}
@@ -368,6 +364,17 @@ export default function UsersManager({ tenantId, extraHeader = null }) {
           </div>
         </form>
       </Modal>
+
+      {confirmTarget && (
+        <ConfirmModal
+          isOpen={Boolean(confirmTarget)}
+          title="Confirmar acción"
+          message={`¿Estás seguro de que deseas ${confirmTarget.is_active ? 'desactivar' : 'activar'} a ${confirmTarget.full_name}? Esta acción puede afectar el acceso al sistema.`}
+          onCancel={() => setConfirmTarget(null)}
+          onConfirm={confirmToggleStatus}
+          confirming={statusUpdatingId === confirmTarget.id}
+        />
+      )}
     </div>
   )
 }

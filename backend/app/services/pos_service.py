@@ -76,6 +76,7 @@ def _to_response(pos: POS) -> POSResponse:
         lng=pos.lng,
         is_active=pos.is_active,
         created_at=pos.created_at,
+        updated_at=pos.updated_at,
     )
 
 

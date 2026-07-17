@@ -9,9 +9,11 @@ import { getActiveCityNames } from '../../services/citiesService'
 import Table from '../ui/Table'
 import Badge from '../ui/Badge'
 import Modal from '../ui/Modal'
+import ConfirmModal from '../ui/ConfirmModal'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
 import TableFilters from '../ui/TableFilters'
+import { formatDateTime } from '../../utils/formatDate'
 
 const POS_TYPE_LABELS = {
   propio: 'Propio',
@@ -44,8 +46,8 @@ export default function POSManager({ tenantId, extraHeader = null }) {
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [sortKey, setSortKey] = useState(null)
-  const [sortDir, setSortDir] = useState('asc')
+  const [sortKey, setSortKey] = useState('created_at')
+  const [sortDir, setSortDir] = useState('desc')
 
   const [isModalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -53,6 +55,7 @@ export default function POSManager({ tenantId, extraHeader = null }) {
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+  const [confirmTarget, setConfirmTarget] = useState(null)
 
   const cityOptions = getActiveCityNames()
 
@@ -175,7 +178,13 @@ export default function POSManager({ tenantId, extraHeader = null }) {
     }
   }
 
-  async function toggleStatus(pos) {
+  function requestToggleStatus(pos) {
+    setConfirmTarget(pos)
+  }
+
+  async function confirmToggleStatus() {
+    if (!confirmTarget) return
+    const pos = confirmTarget
     setStatusUpdatingId(pos.id)
     try {
       await updatePOSStatus(tenantId, pos.id, { is_active: !pos.is_active })
@@ -184,6 +193,7 @@ export default function POSManager({ tenantId, extraHeader = null }) {
       setError('No fue posible actualizar el estado del punto de venta.')
     } finally {
       setStatusUpdatingId(null)
+      setConfirmTarget(null)
     }
   }
 
@@ -224,6 +234,12 @@ export default function POSManager({ tenantId, extraHeader = null }) {
       ),
     },
     {
+      key: 'updated_at',
+      header: 'Última actualización',
+      sortable: true,
+      render: (row) => formatDateTime(row.updated_at),
+    },
+    {
       key: 'actions',
       header: 'Acciones',
       render: (row) => (
@@ -238,7 +254,7 @@ export default function POSManager({ tenantId, extraHeader = null }) {
           <Button
             variant="secondary"
             disabled={statusUpdatingId === row.id}
-            onClick={() => toggleStatus(row)}
+            onClick={() => requestToggleStatus(row)}
             className="!px-3 !py-1.5 text-xs"
           >
             {row.is_active ? 'Desactivar' : 'Activar'}
@@ -399,6 +415,17 @@ export default function POSManager({ tenantId, extraHeader = null }) {
           </div>
         </form>
       </Modal>
+
+      {confirmTarget && (
+        <ConfirmModal
+          isOpen={Boolean(confirmTarget)}
+          title="Confirmar acción"
+          message={`¿Estás seguro de que deseas ${confirmTarget.is_active ? 'desactivar' : 'activar'} a ${confirmTarget.name}? Esta acción puede afectar el acceso al sistema.`}
+          onCancel={() => setConfirmTarget(null)}
+          onConfirm={confirmToggleStatus}
+          confirming={statusUpdatingId === confirmTarget.id}
+        />
+      )}
     </div>
   )
 }

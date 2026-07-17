@@ -100,7 +100,9 @@ def _to_response(tenant: Tenant) -> TenantResponse:
         slug=tenant.slug,
         nit=tenant.nit,
         status=tenant.status,
+        whatsapp_number=tenant.whatsapp_number,
         created_at=tenant.created_at,
+        updated_at=tenant.updated_at,
     )
 
 

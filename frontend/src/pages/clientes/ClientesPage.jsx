@@ -9,9 +9,11 @@ import {
 import Table from '../../components/ui/Table'
 import Badge from '../../components/ui/Badge'
 import Modal from '../../components/ui/Modal'
+import ConfirmModal from '../../components/ui/ConfirmModal'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import TableFilters from '../../components/ui/TableFilters'
+import { formatDateTime } from '../../utils/formatDate'
 
 const STATUS_BADGE = {
   active: { color: 'green', label: 'Activo' },
@@ -40,14 +42,15 @@ export default function ClientesPage() {
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [sortKey, setSortKey] = useState(null)
-  const [sortDir, setSortDir] = useState('asc')
+  const [sortKey, setSortKey] = useState('created_at')
+  const [sortDir, setSortDir] = useState('desc')
 
   const [isModalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+  const [confirmTarget, setConfirmTarget] = useState(null)
 
   async function loadClientes() {
     setLoading(true)
@@ -144,8 +147,14 @@ export default function ClientesPage() {
     }
   }
 
-  async function toggleStatus(cliente) {
+  function requestToggleStatus(cliente) {
     const nextStatus = cliente.status === 'active' ? 'suspended' : 'active'
+    setConfirmTarget({ cliente, nextStatus })
+  }
+
+  async function confirmToggleStatus() {
+    if (!confirmTarget) return
+    const { cliente, nextStatus } = confirmTarget
     setStatusUpdatingId(cliente.id)
     try {
       await updateTenantStatus(cliente.id, { status: nextStatus })
@@ -154,6 +163,7 @@ export default function ClientesPage() {
       setError('No fue posible actualizar el estado del cliente.')
     } finally {
       setStatusUpdatingId(null)
+      setConfirmTarget(null)
     }
   }
 
@@ -189,6 +199,12 @@ export default function ClientesPage() {
       render: (row) => new Date(row.created_at).toLocaleDateString('es-CO'),
     },
     {
+      key: 'updated_at',
+      header: 'Última actualización',
+      sortable: true,
+      render: (row) => formatDateTime(row.updated_at),
+    },
+    {
       key: 'actions',
       header: 'Acciones',
       render: (row) => (
@@ -202,7 +218,7 @@ export default function ClientesPage() {
           <Button
             variant="secondary"
             disabled={statusUpdatingId === row.id}
-            onClick={() => toggleStatus(row)}
+            onClick={() => requestToggleStatus(row)}
             className="!px-3 !py-1.5 text-xs"
           >
             {row.status === 'active' ? 'Suspender' : 'Activar'}
@@ -302,6 +318,17 @@ export default function ClientesPage() {
           </div>
         </form>
       </Modal>
+
+      {confirmTarget && (
+        <ConfirmModal
+          isOpen={Boolean(confirmTarget)}
+          title="Confirmar acción"
+          message={`¿Estás seguro de que deseas ${confirmTarget.nextStatus === 'active' ? 'activar' : 'suspender'} a ${confirmTarget.cliente.name}? Esta acción puede afectar el acceso al sistema.`}
+          onCancel={() => setConfirmTarget(null)}
+          onConfirm={confirmToggleStatus}
+          confirming={statusUpdatingId === confirmTarget.cliente.id}
+        />
+      )}
     </div>
   )
 }

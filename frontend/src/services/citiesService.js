@@ -1,5 +1,9 @@
 const STORAGE_KEY = 'validia-cities'
 
+function generateId() {
+  return Math.random().toString(36).substr(2, 9) + Date.now().toString(36)
+}
+
 const DEFAULT_CITIES = [
   { id: 'bogota', name: 'Bogotá', country: 'Colombia', active: true },
   { id: 'medellin', name: 'Medellín', country: 'Colombia', active: true },
@@ -37,17 +41,36 @@ export function getActiveCityNames() {
     .map((city) => city.name)
 }
 
+function isDuplicateName(cities, { name, country, excludeId }) {
+  return cities.some(
+    (city) =>
+      city.id !== excludeId &&
+      city.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+      city.country === country,
+  )
+}
+
 export function createCity(payload) {
   const cities = getCities()
-  const newCity = { id: crypto.randomUUID(), ...payload }
+  if (isDuplicateName(cities, { name: payload.name, country: payload.country })) {
+    throw new Error('Ya existe una ciudad con ese nombre en ese país')
+  }
+  const newCity = { id: generateId(), ...payload }
   persist([...cities, newCity])
   return newCity
 }
 
 export function updateCity(id, payload) {
-  const cities = getCities().map((city) =>
+  const cities = getCities()
+  const current = cities.find((city) => city.id === id)
+  const name = payload.name ?? current?.name ?? ''
+  const country = payload.country ?? current?.country ?? ''
+  if (isDuplicateName(cities, { name, country, excludeId: id })) {
+    throw new Error('Ya existe una ciudad con ese nombre en ese país')
+  }
+  const updated = cities.map((city) =>
     city.id === id ? { ...city, ...payload } : city,
   )
-  persist(cities)
-  return cities.find((city) => city.id === id)
+  persist(updated)
+  return updated.find((city) => city.id === id)
 }

@@ -323,6 +323,8 @@ def list_campaigns(
             ends_at=c.ends_at,
             total_participations=totals.get(c.id, 0),
             total_invoices_accepted=accepted.get(c.id, 0),
+            created_at=c.created_at,
+            updated_at=c.updated_at,
         )
         for c in campaigns
     ]
