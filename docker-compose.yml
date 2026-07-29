@@ -8,6 +8,8 @@ services:
       POSTGRES_DB: validia
       POSTGRES_USER: validia_user
       POSTGRES_PASSWORD: ValidiaDB2026!
+    ports:
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -21,6 +23,11 @@ services:
     restart: always
     env_file:
       - ./backend/.env
+    environment:
+      # Dentro de la red de docker-compose el host de la DB es el nombre del
+      # servicio ("db"), no localhost. Esto sobrescribe el DATABASE_URL de
+      # .env (pensado para correr el backend nativo) solo para este contenedor.
+      - DATABASE_URL=postgresql://validia_user:ValidiaDB2026!@db:5432/validia
     ports:
       - "8000:8000"
     depends_on:

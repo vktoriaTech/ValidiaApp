@@ -51,7 +51,7 @@ const STATUS_OPTIONS = [
   { value: 'closed', label: 'Cerrada' },
 ]
 
-const STEPS = ['Cliente', 'Datos generales', 'POS y mecánica', 'Premios', 'Resumen']
+const STEPS = ['Cliente', 'Datos generales', 'POS y mecánica', 'Premios', 'Términos y Condiciones', 'Resumen']
 
 const PAGE_SIZE = 20
 
@@ -65,6 +65,7 @@ function emptyForm() {
     pos_ids: [],
     participation_method: '',
     prizes: [{ name: '', prize_type: 'articulo', quantity: 1 }],
+    terms_text: '',
   }
 }
 
@@ -163,7 +164,7 @@ export default function CampaignsPage() {
       setCampaigns(data.items)
       setPages(data.pages || 1)
     } catch {
-      setError('No fue posible cargar las campañas.')
+      setError('No fue posible cargar las actividades.')
     } finally {
       setLoading(false)
     }
@@ -190,7 +191,7 @@ export default function CampaignsPage() {
       )
       setCampaigns(results.flat())
     } catch {
-      setError('No fue posible cargar las campañas.')
+      setError('No fue posible cargar las actividades.')
     } finally {
       setLoading(false)
     }
@@ -329,7 +330,6 @@ export default function CampaignsPage() {
   }
 
   function addPrize() {
-    if (form.prizes.length >= 3) return
     setForm({
       ...form,
       prizes: [...form.prizes, { name: '', prize_type: 'articulo', quantity: 1 }],
@@ -365,6 +365,7 @@ export default function CampaignsPage() {
         starts_at: form.starts_at ? new Date(form.starts_at).toISOString() : null,
         ends_at: form.ends_at ? new Date(form.ends_at).toISOString() : null,
         participation_method: form.participation_method || null,
+        terms_text: form.terms_text.trim() || null,
         pos_ids: form.pos_ids,
         prizes: form.prizes
           .filter((prize) => prize.name.trim())
@@ -380,7 +381,7 @@ export default function CampaignsPage() {
       await refreshCurrentList()
     } catch (err) {
       setFormError(
-        err.response?.data?.detail || 'No fue posible crear la campaña.',
+        err.response?.data?.detail || 'No fue posible crear la actividad.',
       )
     } finally {
       setSaving(false)
@@ -400,7 +401,7 @@ export default function CampaignsPage() {
       await updateCampaignStatus(campaignTenantId, campaign.id, { status: 'active' })
       await refreshCurrentList()
     } catch {
-      setError('No fue posible activar la campaña.')
+      setError('No fue posible activar la actividad.')
     } finally {
       setStatusUpdatingId(null)
       setConfirmCampaign(null)
@@ -419,7 +420,7 @@ export default function CampaignsPage() {
       const data = await getCampaign(campaignTenantId, campaign.id)
       setDetailCampaign(data)
     } catch {
-      setDetailError('No fue posible cargar el detalle de la campaña.')
+      setDetailError('No fue posible cargar el detalle de la actividad.')
     } finally {
       setDetailLoading(false)
     }
@@ -441,6 +442,7 @@ export default function CampaignsPage() {
         : '',
       ends_at: detailCampaign.ends_at ? detailCampaign.ends_at.slice(0, 16) : '',
       participation_method: detailCampaign.participation_method || '',
+      terms_text: detailCampaign.terms_text || '',
     })
     setDetailEditError('')
     setEditingDetail(true)
@@ -462,6 +464,7 @@ export default function CampaignsPage() {
           ? new Date(detailEditForm.ends_at).toISOString()
           : null,
         participation_method: detailEditForm.participation_method || null,
+        terms_text: detailEditForm.terms_text.trim() || null,
       })
       const refreshed = await getCampaign(detailTenantId, detailCampaign.id)
       setDetailCampaign(refreshed)
@@ -469,7 +472,7 @@ export default function CampaignsPage() {
       await refreshCurrentList()
     } catch (err) {
       setDetailEditError(
-        err.response?.data?.detail || 'No fue posible actualizar la campaña.',
+        err.response?.data?.detail || 'No fue posible actualizar la actividad.',
       )
     } finally {
       setDetailSaving(false)
@@ -554,7 +557,7 @@ export default function CampaignsPage() {
   if (!isSuperAdmin && !ownTenantId) {
     return (
       <p className="text-sm text-gray-500">
-        No hay un cliente disponible para mostrar las campañas.
+        No hay un cliente disponible para mostrar las actividades.
       </p>
     )
   }
@@ -634,7 +637,7 @@ export default function CampaignsPage() {
                 )}
               </div>
             ))}
-          <Button onClick={openModal}>Nueva campaña</Button>
+          <Button onClick={openModal}>Nueva actividad</Button>
         </div>
       </div>
 
@@ -654,13 +657,13 @@ export default function CampaignsPage() {
         sortKey={sortKey}
         sortDir={sortDir}
         onSort={handleSort}
-        emptyMessage="No hay campañas registradas."
+        emptyMessage="No hay actividades registradas."
       />
 
       <Modal
         isOpen={isModalOpen}
         onClose={() => setModalOpen(false)}
-        title="Nueva campaña"
+        title="Nueva actividad"
         maxWidth="max-w-2xl"
       >
         <div className="mb-6 flex items-center gap-2">
@@ -954,15 +957,37 @@ export default function CampaignsPage() {
                 </div>
               )
             })}
-            {form.prizes.length < 3 && (
-              <Button type="button" variant="secondary" onClick={addPrize}>
-                Agregar premio
-              </Button>
-            )}
+            <Button type="button" variant="secondary" onClick={addPrize}>
+              Agregar premio
+            </Button>
           </div>
         )}
 
         {step === 4 && (
+          <div className="flex flex-col gap-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-v-night">
+                Términos y condiciones
+              </label>
+              <p className="mb-2 text-xs text-gray-400">
+                No es obligatorio para crear la actividad, pero sí para
+                activarla. Puedes completarlo ahora o más adelante desde el
+                detalle de la actividad.
+              </p>
+              <textarea
+                rows={10}
+                value={form.terms_text}
+                onChange={(e) =>
+                  setForm({ ...form, terms_text: e.target.value })
+                }
+                placeholder="Términos y condiciones de la actividad..."
+                className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-v-magenta"
+              />
+            </div>
+          </div>
+        )}
+
+        {step === 5 && (
           <div className="flex flex-col gap-4 text-sm">
             <div>
               <p className="text-xs text-gray-400">Cliente</p>
@@ -1008,6 +1033,14 @@ export default function CampaignsPage() {
                   ))}
               </ul>
             </div>
+            <div>
+              <p className="text-xs text-gray-400">Términos y condiciones</p>
+              <p>
+                {form.terms_text.trim()
+                  ? 'Definidos'
+                  : 'Sin definir — no podrás activar la actividad hasta agregarlos'}
+              </p>
+            </div>
           </div>
         )}
 
@@ -1042,7 +1075,7 @@ export default function CampaignsPage() {
       <Modal
         isOpen={detailOpen}
         onClose={closeDetail}
-        title="Detalle de campaña"
+        title="Detalle de actividad"
         maxWidth="max-w-2xl"
       >
         {detailLoading ? (
@@ -1150,6 +1183,30 @@ export default function CampaignsPage() {
                 className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
               />
             </div>
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="detail-edit-terms"
+                className="text-sm font-medium text-v-night"
+              >
+                Términos y condiciones
+              </label>
+              <p className="text-xs text-gray-400">
+                Requerido para poder activar la actividad.
+              </p>
+              <textarea
+                id="detail-edit-terms"
+                rows={8}
+                value={detailEditForm.terms_text}
+                onChange={(e) =>
+                  setDetailEditForm({
+                    ...detailEditForm,
+                    terms_text: e.target.value,
+                  })
+                }
+                placeholder="Términos y condiciones de la actividad..."
+                className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-v-magenta"
+              />
+            </div>
 
             {detailEditError && (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
@@ -1249,6 +1306,14 @@ export default function CampaignsPage() {
                 <p className="mt-1 text-gray-400">Sin premios asociados.</p>
               )}
             </div>
+            <div>
+              <p className="text-xs text-gray-400">Términos y condiciones</p>
+              <p>
+                {detailCampaign.terms_text?.trim()
+                  ? 'Definidos'
+                  : 'Sin definir — no se puede activar hasta agregarlos'}
+              </p>
+            </div>
 
             <div className="mt-2 flex justify-end gap-3">
               <Button type="button" variant="secondary" onClick={closeDetail}>
@@ -1256,7 +1321,7 @@ export default function CampaignsPage() {
               </Button>
               {detailCampaign.status === 'draft' && (
                 <Button type="button" onClick={startEditDetail}>
-                  Editar campaña
+                  Editar actividad
                 </Button>
               )}
             </div>

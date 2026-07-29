@@ -442,6 +442,8 @@ def change_campaign_status(
         prize_count = db.query(func.count(Prize.id)).filter(Prize.campaign_id == campaign_id).scalar()
         if not prize_count:
             raise HTTPException(status_code=400, detail="La campaña debe tener al menos 1 premio")
+        if not campaign.terms_text or not campaign.terms_text.strip():
+            raise HTTPException(status_code=400, detail="La campaña debe tener términos y condiciones definidos")
         # Generate QR on activation
         _apply_qr(db, campaign)
         _audit(db, tenant_id=tenant_id, user_id=current_user.id,

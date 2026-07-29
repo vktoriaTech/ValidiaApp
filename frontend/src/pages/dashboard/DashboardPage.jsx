@@ -56,7 +56,7 @@ export default function DashboardPage() {
 
   const cards = [
     {
-      label: 'Campañas activas',
+      label: 'Actividades activas',
       value: kpis.activeCampaigns,
     },
     {

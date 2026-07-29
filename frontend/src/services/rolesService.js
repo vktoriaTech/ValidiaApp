@@ -7,7 +7,7 @@ function generateId() {
 export const AVAILABLE_PERMISSIONS = [
   { value: 'ver_dashboard', label: 'Ver dashboard' },
   { value: 'gestionar_clientes', label: 'Gestionar clientes' },
-  { value: 'gestionar_campañas', label: 'Gestionar campañas' },
+  { value: 'gestionar_campañas', label: 'Gestionar actividades' },
   { value: 'gestionar_pos', label: 'Gestionar POS' },
   { value: 'gestionar_usuarios', label: 'Gestionar usuarios' },
   { value: 'ver_reportes', label: 'Ver reportes' },
@@ -43,7 +43,7 @@ const DEFAULT_ROLES = [
     id: 'role-vendor',
     value: 'vendor',
     label: 'Vendedor',
-    description: 'Acceso a campañas asignadas',
+    description: 'Acceso a actividades asignadas',
     permissions: ['ver_dashboard'],
     created_at: new Date().toISOString(),
   },
