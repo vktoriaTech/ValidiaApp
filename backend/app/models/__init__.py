@@ -5,6 +5,7 @@ from .campaign_expense import CampaignExpense
 from .campaign_mercaderista import CampaignMercaderista
 from .campaign_pos import CampaignPOS
 from .campaign_result import CampaignResult
+from .campaign_terms_acceptance import CampaignTermsAcceptance
 from .campaign_vendor import CampaignVendor
 from .inventory_item import InventoryItem
 from .invoice import Invoice, ValidationStatus
@@ -32,6 +33,7 @@ __all__ = [
     "CampaignMercaderista",
     "CampaignExpense",
     "CampaignResult",
+    "CampaignTermsAcceptance",
     "InventoryItem",
     "POS",
     "POSType",

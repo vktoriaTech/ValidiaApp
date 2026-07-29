@@ -157,6 +157,7 @@ class CampaignDetailResponse(BaseModel):
     participation_method: str | None
     closure_type: str | None
     terms_text: str | None
+    terms_version: int
     rules: list | None
     qr_code: str | None
     qr_slug: str | None
@@ -295,6 +296,24 @@ class ResultResponse(BaseModel):
     result_value: Decimal
     description: str | None
     created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Terms & conditions acceptance ──────────────────────────────────────────────
+
+class TermsAcceptCreate(BaseModel):
+    cedula: str
+    phone_wa: str | None = None
+    full_name: str | None = None
+    channel: str = "whatsapp"
+
+
+class TermsAcceptResponse(BaseModel):
+    participant_id: uuid.UUID
+    campaign_id: uuid.UUID
+    terms_version: int
+    accepted_at: datetime
 
     model_config = {"from_attributes": True}
 

@@ -28,6 +28,8 @@ from app.schemas.campaign import (
     QRResponse,
     ResultCreate,
     ResultResponse,
+    TermsAcceptCreate,
+    TermsAcceptResponse,
     VendorCreate,
     VendorResponse,
     VendorUpdate,
@@ -35,6 +37,20 @@ from app.schemas.campaign import (
 from app.services import campaign_service
 
 router = APIRouter(prefix="/tenants", tags=["campaigns"])
+
+# Rutas públicas (sin tenant_id en el path, sin autenticación de usuario) para
+# que el bot de participantes (H9) pueda registrar la aceptación de TyC sin
+# tener una sesión de admin. Ver nota de seguridad en campaign_service.accept_campaign_terms.
+public_router = APIRouter(prefix="/campaigns", tags=["campaigns-public"])
+
+
+@public_router.post("/{campaign_id}/terms/accept", response_model=TermsAcceptResponse, status_code=status.HTTP_201_CREATED)
+def accept_campaign_terms(
+    campaign_id: uuid.UUID,
+    payload: TermsAcceptCreate,
+    db: Session = Depends(get_db),
+) -> TermsAcceptResponse:
+    return campaign_service.accept_campaign_terms(db, campaign_id, payload)
 
 
 # ── Campaigns CRUD ────────────────────────────────────────────────────────────

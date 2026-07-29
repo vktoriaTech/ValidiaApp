@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, time
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text, Time
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, Time
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -54,6 +54,7 @@ class Campaign(BaseModel):
     participation_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
     closure_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     terms_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    terms_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     rules: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     prize_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     qr_code: Mapped[str | None] = mapped_column(Text, nullable=True)
