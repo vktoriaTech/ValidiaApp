@@ -13,3 +13,5 @@ Thumbs.db
 validia-key.pem
 *.pem
 *.pem
+*.dump
+.claude/
