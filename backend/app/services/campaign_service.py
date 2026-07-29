@@ -2,6 +2,7 @@ import csv
 import io
 import math
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import func
@@ -15,9 +16,11 @@ from app.models.campaign_expense import CampaignExpense
 from app.models.campaign_mercaderista import CampaignMercaderista
 from app.models.campaign_pos import CampaignPOS
 from app.models.campaign_result import CampaignResult
+from app.models.campaign_terms_acceptance import CampaignTermsAcceptance
 from app.models.campaign_vendor import CampaignVendor
 from app.models.inventory_item import InventoryItem
 from app.models.invoice import Invoice, ValidationStatus
+from app.models.participant import Participant
 from app.models.participation import Participation
 from app.models.pos import POS
 from app.models.prize import Prize
@@ -45,6 +48,8 @@ from app.schemas.campaign import (
     QRResponse,
     ResultCreate,
     ResultResponse,
+    TermsAcceptCreate,
+    TermsAcceptResponse,
     VendorCreate,
     VendorResponse,
     VendorUpdate,
@@ -364,6 +369,7 @@ def get_campaign(
         participation_method=campaign.participation_method,
         closure_type=campaign.closure_type,
         terms_text=campaign.terms_text,
+        terms_version=campaign.terms_version,
         rules=campaign.rules,
         qr_code=campaign.qr_code,
         qr_slug=campaign.qr_slug,
@@ -801,3 +807,76 @@ def create_result(
     db.commit()
     db.refresh(result)
     return ResultResponse.model_validate(result)
+
+
+# ── Terms & conditions acceptance ───────────────────────────────────────────────
+
+def accept_campaign_terms(
+    db: Session, campaign_id: uuid.UUID, payload: TermsAcceptCreate
+) -> TermsAcceptResponse:
+    """Registra que un participante aceptó los TyC vigentes de una actividad.
+
+    Sin autenticación de admin a propósito: en H9 esto lo va a llamar el bot
+    de WhatsApp directamente cuando el participante acepta. Antes de exponer
+    esto a un webhook real hay que protegerlo (ej. secreto compartido), por
+    ahora queda abierto para poder construir/probar el flujo.
+    """
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if campaign is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Actividad no encontrada")
+    if not campaign.terms_text or not campaign.terms_text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Esta actividad todavía no tiene términos y condiciones definidos",
+        )
+
+    participant = db.query(Participant).filter(
+        Participant.tenant_id == campaign.tenant_id,
+        Participant.cedula == payload.cedula,
+    ).first()
+    if participant is None:
+        participant = Participant(
+            tenant_id=campaign.tenant_id,
+            cedula=payload.cedula,
+            phone_wa=payload.phone_wa,
+            full_name=payload.full_name,
+        )
+        db.add(participant)
+        db.flush()
+    else:
+        if payload.phone_wa:
+            participant.phone_wa = payload.phone_wa
+        if payload.full_name:
+            participant.full_name = payload.full_name
+
+    now = datetime.now(timezone.utc)
+    acceptance = CampaignTermsAcceptance(
+        tenant_id=campaign.tenant_id,
+        campaign_id=campaign.id,
+        participant_id=participant.id,
+        terms_version=campaign.terms_version,
+        accepted_at=now,
+        channel=payload.channel,
+    )
+    db.add(acceptance)
+    participant.terms_accepted_at = now
+
+    _audit(
+        db, tenant_id=campaign.tenant_id, user_id=None,
+        action="campaign.terms_accepted", entity_id=str(campaign.id),
+        payload={
+            "participant_id": str(participant.id),
+            "terms_version": campaign.terms_version,
+            "channel": payload.channel,
+        },
+    )
+
+    db.commit()
+    db.refresh(acceptance)
+
+    return TermsAcceptResponse(
+        participant_id=participant.id,
+        campaign_id=campaign.id,
+        terms_version=acceptance.terms_version,
+        accepted_at=acceptance.accepted_at,
+    )

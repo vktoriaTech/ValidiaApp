@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.auth import router as auth_router
+from app.api.v1.campaigns import public_router as campaigns_public_router
 from app.api.v1.campaigns import router as campaigns_router
 from app.api.v1.cufe import router as cufe_router
 from app.api.v1.pos import router as pos_router
@@ -36,6 +37,7 @@ app.include_router(auth_router, prefix=settings.API_V1_PREFIX)
 app.include_router(tenants_router, prefix=settings.API_V1_PREFIX)
 app.include_router(pos_router, prefix=settings.API_V1_PREFIX)
 app.include_router(campaigns_router, prefix=settings.API_V1_PREFIX)
+app.include_router(campaigns_public_router, prefix=settings.API_V1_PREFIX)
 app.include_router(cufe_router, prefix=settings.API_V1_PREFIX)
 
 
