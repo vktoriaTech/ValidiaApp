@@ -1,12 +1,11 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import Sidebar from './Sidebar'
-import Button from '../ui/Button'
 
 const PAGE_TITLES = {
   '/dashboard': 'Dashboard',
   '/clientes': 'Clientes',
-  '/campaigns': 'Campañas',
+  '/campaigns': 'Actividades',
   '/pos': 'Puntos de venta',
   '/users': 'Usuarios',
   '/configuracion': 'Configuración',
@@ -36,7 +35,6 @@ export default function Shell() {
           <h1 className="text-xl font-semibold text-v-night">
             {getPageTitle(location.pathname)}
           </h1>
-          <Button variant="primary">Nueva actividad</Button>
         </header>
         <main className="flex-1 overflow-y-auto p-8">
           <Outlet />

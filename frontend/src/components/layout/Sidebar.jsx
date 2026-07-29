@@ -29,7 +29,7 @@ const NAV_ITEMS = [
   },
   {
     to: '/campaigns',
-    label: 'Campañas',
+    label: 'Actividades',
     icon: (
       <path
         strokeLinecap="round"
