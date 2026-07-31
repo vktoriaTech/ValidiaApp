@@ -92,22 +92,26 @@ Una actividad (Campaign) queda asociada a **una marca** del tenant. Esto reempla
 
 ```
 Super admin crea / mantiene el catálogo de Sectores
+  └── Desde la sección de Configuraciones (SectorsPage.jsx — nueva)
         ↓
-Al crear o editar un Tenant, el admin selecciona su Sector
+Al CREAR un Tenant (ClientesPage.jsx):
+  └── Selector de sector (dropdown, opcional)
+Al EDITAR un Tenant (ClienteDetailPage.jsx):
+  └── Selector de sector (dropdown, opcional) ← ya implementado ✅
         ↓
-Admin del tenant crea sus Marcas
+Admin del tenant crea sus Marcas (tab "Marcas" en detalle del tenant ← ya implementado ✅)
   └── Crea Categorías dentro de cada marca
   └── Crea Productos dentro de cada marca
       └── Agrega SKUs a cada producto (código | nombre)
         ↓
-Al crear una Actividad (wizard):
+Al crear una Actividad (wizard — CampaignsPage.jsx):
   Step 1 · Datos generales → se selecciona la Marca de la actividad
-           (solo marcas del tenant seleccionado)
+           (dropdown, solo marcas activas del tenant seleccionado)
         ↓
   Step 3 · POS y mecánica → los POS disponibles ya son los del tenant (sin cambio)
         ↓
   Step 4 · TyC / Rules → al definir qué productos aplican, se seleccionan
-           SKUs del catálogo de la marca elegida
+           SKUs del catálogo de la marca elegida (fase futura — no MVP)
         ↓
 Actividad queda con brand_id → Brand → Tenant (trazabilidad completa)
 ```
@@ -248,9 +252,10 @@ DELETE /sectors/{sector_id}            → eliminar (solo si no hay tenants asig
 
 ```
 PATCH  /tenants/{tenant_id}            → ya existe; agregar sector_id al body permitido
+POST   /tenants                        → ya existe; agregar sector_id al body de creación
 ```
 
-(El endpoint PATCH de tenant ya existe — solo se agrega `sector_id` al schema de actualización.)
+Ambos endpoints ya existen — se agrega `sector_id` (UUID | null) al schema de creación y actualización. El frontend debe mostrar el selector de sector tanto en el formulario de **creación** (`ClientesPage.jsx`) como en el de **edición** (`ClienteDetailPage.jsx`).
 
 ### 6.3 Marcas (por tenant)
 
@@ -416,14 +421,20 @@ backend/app/
 
 frontend/src/
 ├── pages/
-│   ├── tenants/
-│   │   └── TenantForm.jsx          [MODIFICAR] — agregar selector de sector
+│   ├── clientes/
+│   │   ├── ClientesPage.jsx          [MODIFICAR] — agregar selector de sector al form de CREACIÓN
+│   │   └── ClienteDetailPage.jsx     [YA MODIFICADO ✅] — selector de sector en edición + tab Marcas
+│   ├── campaigns/
+│   │   └── CampaignsPage.jsx         [MODIFICAR] — agregar dropdown de marca en Step 1 del wizard
+│   └── settings/
+│       └── SectorsPage.jsx           [NUEVO] — CRUD de sectores para super_admin en Configuraciones
+├── components/
 │   └── brands/
-│       └── BrandsPage.jsx          [NUEVO] — CRUD de marcas, categorías, productos, SKUs
-│           (accesible desde el detalle del tenant o desde el sidebar)
+│       └── BrandsManager.jsx         [YA CREADO ✅] — CRUD anidado marcas/categorías/productos/SKUs
 └── services/
-    ├── sectorService.js            [NUEVO]
-    └── brandService.js             [NUEVO]
+    ├── sectorService.js              [YA CREADO ✅]
+    ├── brandService.js               [YA CREADO ✅]
+    └── productService.js             [YA CREADO ✅]
 ```
 
 ---
@@ -470,3 +481,7 @@ docker exec -it validia-backend alembic upgrade head
 | T13 | Asignar sector a tenant existente | 200, `sector_id` actualizado |
 | T14 | Eliminar sector con tenants asignados | 409 |
 | T15 | GET `/tenants/{id}/brands` incluye categorías y conteo de productos | 200, estructura correcta |
+| T16 | Crear tenant con `sector_id` válido | 201, sector asignado |
+| T17 | Crear tenant sin `sector_id` | 201, sector queda null |
+| T18 | CRUD de sectores desde SectorsPage (super_admin) | Crear, editar nombre, eliminar sin tenants asignados |
+| T19 | Selector de marca visible en wizard Step 1 solo si hay tenant seleccionado | Dropdown se carga al avanzar al Step 1 |
