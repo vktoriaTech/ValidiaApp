@@ -14,4 +14,5 @@ validia-key.pem
 *.pem
 *.pem
 *.dump
-.claude/
+.claude/*
+!.claude/settings.json
