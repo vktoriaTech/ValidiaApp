@@ -53,6 +53,18 @@ def _extract_pos_nit(result: dict) -> str:
     return ""
 
 
+def extract_invoice_fields(result: dict) -> dict:
+    """Public wrapper used by participation_service to build an Invoice from
+    a raw DIAN validation payload, without going through validate_and_store
+    (which requires an authenticated admin user and isn't usable from the
+    public participant/bot flow)."""
+    return {
+        "amount": _extract_amount(result),
+        "invoice_date": _extract_invoice_date(result),
+        "pos_nit": _extract_pos_nit(result),
+    }
+
+
 def validate_and_store(db: Session, tenant_id: uuid.UUID, cufe: str, current_user: User) -> dict:
     _check_access(current_user)
 
