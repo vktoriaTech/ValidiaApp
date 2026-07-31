@@ -121,24 +121,30 @@ No se requieren tablas nuevas — se reutiliza lo que ya existe de SPEC-04A y de
 
 Todos delegan la parte específica de tipo a la interfaz definida en la sección 7.
 
-### 6.1 Registrar participación
+> **Convención de rutas (por actor).** El código separa routers por quién consume el endpoint, no por recurso:
+> - **`router` (`prefix="/tenants"`)** — endpoints de admin, autenticados y tenant-scoped: `/tenants/{tenant_id}/campaigns/{campaign_id}/...`.
+> - **`public_router` (`prefix="/campaigns"`)** — endpoints participante/bot, sin auth de admin: `/campaigns/{campaign_id}/...` (patrón ya existente en `POST /campaigns/{campaign_id}/terms/accept`).
+>
+> Registrar una participación la dispara el bot/consumidor → va en `public_router`. Listar participaciones, correr el sorteo y listar ganadores los hace el admin → van en `router` (tenant-scoped).
+
+### 6.1 Registrar participación (participante/bot — `public_router`)
 ```
-POST /api/v1/tenants/{tenant_id}/campaigns/{campaign_id}/participations
+POST /api/v1/campaigns/{campaign_id}/participations
 ```
 Recibe la evidencia (CUFE) y la identificación del participante, resuelve/crea el `Participant`, corre el motor de reglas del tipo, y crea la `Participation`. Devuelve elegibilidad, puntos/tickets y motivo de rechazo si aplica (una participación no elegible **se guarda igual**, con `eligible=false` y su razón — no se descarta en silencio).
 
-### 6.2 Listar participaciones
+### 6.2 Listar participaciones (admin — `router`)
 ```
 GET /api/v1/tenants/{tenant_id}/campaigns/{campaign_id}/participations
 ```
 
-### 6.3 Cerrar y calcular ganadores (dispatcher)
+### 6.3 Cerrar y calcular ganadores (dispatcher) (admin — `router`)
 ```
 POST /api/v1/tenants/{tenant_id}/campaigns/{campaign_id}/draw
 ```
 Requiere `status == closed`. Este endpoint no implementa ningún algoritmo de selección — solo valida el estado y delega al módulo de cierre del `activity_type` correspondiente (sección 7). Idempotente: correrlo dos veces no debe duplicar ganadores.
 
-### 6.4 Listar ganadores
+### 6.4 Listar ganadores (admin — `router`)
 ```
 GET /api/v1/tenants/{tenant_id}/campaigns/{campaign_id}/winners
 ```

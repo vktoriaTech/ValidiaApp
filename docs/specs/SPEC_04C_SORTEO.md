@@ -220,6 +220,8 @@ Además de los endpoints base de SPEC-04B (registrar participación, listar, dra
 
 ### 6.1 Registrar participación (extensión del body base)
 
+> **Ruta (participante/bot — `public_router`).** Este endpoint lo dispara el consumidor/bot, por eso vive en el `public_router` con prefix `/campaigns` (mismo patrón que `POST /campaigns/{id}/terms/accept`), sin auth de admin. Ver la convención de rutas por actor en SPEC-04B §6.
+
 ```
 POST /api/v1/campaigns/{campaign_id}/participations
 ```
@@ -270,7 +272,9 @@ POST /api/v1/campaigns/{campaign_id}/participations
 | 422 | POS de la factura no está en la lista de POS de la actividad |
 | 409 | CUFE ya registrado en esta actividad (duplicado) |
 
-### 6.2 Ejecutar sorteo / registrar ganadores externos
+### 6.2 Ejecutar sorteo / registrar ganadores externos (admin — `router`)
+
+> **Ruta (admin — `router`).** El sorteo lo corre el admin, por eso este endpoint es tenant-scoped y autenticado (prefix `/tenants`). Ver convención en SPEC-04B §6.
 
 ```
 POST /api/v1/tenants/{tenant_id}/campaigns/{campaign_id}/draw
@@ -443,14 +447,17 @@ backend/app/
 │           · _get_or_create_accumulation()    [helper interno]
 │
 ├── api/v1/
-│   └── participations.py                      [NUEVO — router compartido, definido por SPEC-04B]
-│       · POST /campaigns/{id}/participations
-│       · GET  /campaigns/{id}/participations
-│       · POST /campaigns/{id}/draw
-│       · GET  /campaigns/{id}/winners
+│   └── participations.py                      [NUEVO — definido por SPEC-04B; dos routers según actor]
+│       · public_router (prefix /campaigns):
+│           - POST /campaigns/{id}/participations          (participante/bot)
+│       · router (prefix /tenants, autenticado):
+│           - GET  /tenants/{tenant_id}/campaigns/{id}/participations
+│           - POST /tenants/{tenant_id}/campaigns/{id}/draw
+│           - GET  /tenants/{tenant_id}/campaigns/{id}/winners
 │
 └── main.py                                    [MODIFICAR]
-    · include_router(participations_router)
+    · include_router(participations_router)         (admin, prefix /tenants)
+    · include_router(participations_public_router)  (participante/bot, prefix /campaigns)
 
 alembic/versions/
 └── XXXX_create_campaign_participant_accumulations.py  [NUEVA MIGRACIÓN]
