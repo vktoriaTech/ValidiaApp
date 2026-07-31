@@ -27,6 +27,7 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 # Truncated before every test, in FK-safe order (children first). CASCADE
 # covers anything not listed, so this is a belt-and-suspenders ordering.
 _TABLES_TO_CLEAR = [
+    "audit_logs",
     "campaign_participant_accumulations",
     "participations",
     "campaign_terms_acceptances",
