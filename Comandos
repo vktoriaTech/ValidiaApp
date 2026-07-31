@@ -1,0 +1,7 @@
+Levantar el proyecto:
+
+cd ~/Documents/ValidiaApp
+docker compose up -d
+
+Para apagarlo:
+docker compose down

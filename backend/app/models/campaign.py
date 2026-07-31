@@ -42,6 +42,7 @@ class Campaign(BaseModel):
         default=CampaignStatus.draft,
     )
     objective_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    objective_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     objective_value: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
     budget: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)

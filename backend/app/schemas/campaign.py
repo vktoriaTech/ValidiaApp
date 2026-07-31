@@ -59,6 +59,7 @@ class CampaignCreate(BaseModel):
     description: str | None = None
     activity_type: ActivityType
     objective_type: str | None = None
+    objective_label: str | None = None
     objective_value: Decimal | None = None
     budget: Decimal | None = None
     category: str | None = None
@@ -81,6 +82,7 @@ class CampaignUpdate(BaseModel):
     description: str | None = None
     activity_type: ActivityType | None = None
     objective_type: str | None = None
+    objective_label: str | None = None
     objective_value: Decimal | None = None
     budget: Decimal | None = None
     category: str | None = None
@@ -145,6 +147,7 @@ class CampaignDetailResponse(BaseModel):
     activity_type: ActivityType | None
     status: CampaignStatus
     objective_type: str | None
+    objective_label: str | None
     objective_value: Decimal | None
     budget: Decimal | None
     category: str | None

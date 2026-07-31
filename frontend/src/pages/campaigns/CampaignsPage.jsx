@@ -51,7 +51,7 @@ const STATUS_OPTIONS = [
   { value: 'closed', label: 'Cerrada' },
 ]
 
-const STEPS = ['Cliente', 'Datos generales', 'POS y mecánica', 'Premios', 'Términos y Condiciones', 'Resumen']
+const STEPS = ['Cliente', 'Datos generales', 'Premios', 'POS y mecánica', 'Términos y Condiciones', 'Resumen']
 
 const PAGE_SIZE = 20
 
@@ -60,6 +60,9 @@ function emptyForm() {
     name: '',
     description: '',
     activity_type: 'sorteo',
+    objective_type: '',
+    objective_label: '',
+    objective_value: '',
     starts_at: '',
     ends_at: '',
     pos_ids: [],
@@ -308,7 +311,7 @@ export default function CampaignsPage() {
 
   async function handleNext() {
     const nextStep = step + 1
-    if (nextStep === 2) {
+    if (nextStep === 3) {
       setPosLoading(true)
       try {
         const data = await getActivePOS(wizardTenantId)
@@ -362,6 +365,9 @@ export default function CampaignsPage() {
         name: form.name,
         description: form.description || null,
         activity_type: form.activity_type,
+        objective_type: form.objective_type || null,
+        objective_label: form.objective_type === 'otros' ? (form.objective_label || null) : null,
+        objective_value: form.objective_value ? Number(form.objective_value) : null,
         starts_at: form.starts_at ? new Date(form.starts_at).toISOString() : null,
         ends_at: form.ends_at ? new Date(form.ends_at).toISOString() : null,
         participation_method: form.participation_method || null,
@@ -437,6 +443,9 @@ export default function CampaignsPage() {
       name: detailCampaign.name || '',
       description: detailCampaign.description || '',
       activity_type: detailCampaign.activity_type || 'sorteo',
+      objective_type: detailCampaign.objective_type || '',
+      objective_label: detailCampaign.objective_label || '',
+      objective_value: detailCampaign.objective_value ? String(detailCampaign.objective_value) : '',
       starts_at: detailCampaign.starts_at
         ? detailCampaign.starts_at.slice(0, 16)
         : '',
@@ -457,6 +466,9 @@ export default function CampaignsPage() {
         name: detailEditForm.name,
         description: detailEditForm.description || null,
         activity_type: detailEditForm.activity_type,
+        objective_type: detailEditForm.objective_type || null,
+        objective_label: detailEditForm.objective_type === 'otros' ? (detailEditForm.objective_label || null) : null,
+        objective_value: detailEditForm.objective_value ? Number(detailEditForm.objective_value) : null,
         starts_at: detailEditForm.starts_at
           ? new Date(detailEditForm.starts_at).toISOString()
           : null,
@@ -805,6 +817,51 @@ export default function CampaignsPage() {
                 ))}
               </select>
             </div>
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="campaign-objective-type"
+                className="text-sm font-medium text-v-night"
+              >
+                Objetivo de la actividad <span className="text-gray-400 font-normal">(opcional)</span>
+              </label>
+              <select
+                id="campaign-objective-type"
+                value={form.objective_type}
+                onChange={(e) =>
+                  setForm({ ...form, objective_type: e.target.value, objective_label: '', objective_value: '' })
+                }
+                className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
+              >
+                <option value="">Sin objetivo definido</option>
+                <option value="venta">Venta</option>
+                <option value="rotacion">Rotación</option>
+                <option value="otros">Otros</option>
+              </select>
+            </div>
+
+            {form.objective_type === 'otros' && (
+              <Input
+                id="campaign-objective-label"
+                label="Nombre del objetivo"
+                placeholder="Ej: Nuevos clientes, Visitas a punto..."
+                value={form.objective_label}
+                onChange={(e) => setForm({ ...form, objective_label: e.target.value })}
+              />
+            )}
+
+            {form.objective_type && (
+              <Input
+                id="campaign-objective-value"
+                label="Valor objetivo"
+                inputMode="numeric"
+                placeholder="Ej: 20000000"
+                value={formatMoneyCO(form.objective_value)}
+                onChange={(e) =>
+                  setForm({ ...form, objective_value: parseMoneyCO(e.target.value) })
+                }
+              />
+            )}
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Input
                 id="campaign-starts-at"
@@ -825,64 +882,6 @@ export default function CampaignsPage() {
         )}
 
         {step === 2 && (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="campaign-pos"
-                className="text-sm font-medium text-v-night"
-              >
-                Puntos de venta
-              </label>
-              {posLoading ? (
-                <p className="text-sm text-gray-400">Cargando POS activos...</p>
-              ) : (
-                <select
-                  id="campaign-pos"
-                  multiple
-                  value={form.pos_ids}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      pos_ids: Array.from(e.target.selectedOptions, (o) => o.value),
-                    })
-                  }
-                  className="h-36 w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
-                >
-                  {activePOS.map((pos) => (
-                    <option key={pos.id} value={pos.id}>
-                      {pos.name}
-                      {pos.nit_emisor ? ` — ${pos.nit_emisor}` : ''}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <p className="text-xs text-gray-400">
-                Mantén Ctrl/Cmd para seleccionar varios puntos de venta.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="campaign-participation-method"
-                className="text-sm font-medium text-v-night"
-              >
-                Mecánica de participación
-              </label>
-              <textarea
-                id="campaign-participation-method"
-                rows={3}
-                value={form.participation_method}
-                onChange={(e) =>
-                  setForm({ ...form, participation_method: e.target.value })
-                }
-                placeholder="Describe cómo participan los clientes"
-                className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
-              />
-            </div>
-          </div>
-        )}
-
-        {step === 3 && (
           <div className="flex flex-col gap-4">
             {form.prizes.map((prize, index) => {
               const isMoneyPrize = MONEY_PRIZE_TYPES.includes(prize.prize_type)
@@ -960,6 +959,64 @@ export default function CampaignsPage() {
             <Button type="button" variant="secondary" onClick={addPrize}>
               Agregar premio
             </Button>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="campaign-pos"
+                className="text-sm font-medium text-v-night"
+              >
+                Puntos de venta
+              </label>
+              {posLoading ? (
+                <p className="text-sm text-gray-400">Cargando POS activos...</p>
+              ) : (
+                <select
+                  id="campaign-pos"
+                  multiple
+                  value={form.pos_ids}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      pos_ids: Array.from(e.target.selectedOptions, (o) => o.value),
+                    })
+                  }
+                  className="h-36 w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
+                >
+                  {activePOS.map((pos) => (
+                    <option key={pos.id} value={pos.id}>
+                      {pos.name}
+                      {pos.nit_emisor ? ` — ${pos.nit_emisor}` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p className="text-xs text-gray-400">
+                Mantén Ctrl/Cmd para seleccionar varios puntos de venta.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="campaign-participation-method"
+                className="text-sm font-medium text-v-night"
+              >
+                Mecánica de participación
+              </label>
+              <textarea
+                id="campaign-participation-method"
+                rows={3}
+                value={form.participation_method}
+                onChange={(e) =>
+                  setForm({ ...form, participation_method: e.target.value })
+                }
+                placeholder="Describe cómo participan los clientes"
+                className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
+              />
+            </div>
           </div>
         )}
 
