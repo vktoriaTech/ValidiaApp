@@ -6,6 +6,7 @@ import {
   getTenants,
   updateTenantStatus,
 } from '../../services/tenantService'
+import { getSectors } from '../../services/sectorService'
 import Table from '../../components/ui/Table'
 import Badge from '../../components/ui/Badge'
 import Modal from '../../components/ui/Modal'
@@ -28,7 +29,7 @@ const STATUS_OPTIONS = [
   { value: 'suspended', label: 'Suspendido' },
 ]
 
-const EMPTY_FORM = { name: '', slug: '', nit: '', whatsapp_number: '' }
+const EMPTY_FORM = { name: '', slug: '', nit: '', whatsapp_number: '', sector_id: '' }
 
 export default function ClientesPage() {
   const user = useAuthStore((state) => state.user)
@@ -51,6 +52,14 @@ export default function ClientesPage() {
   const [saving, setSaving] = useState(false)
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
   const [confirmTarget, setConfirmTarget] = useState(null)
+
+  const [sectors, setSectors] = useState([])
+
+  useEffect(() => {
+    getSectors({ limit: 50 })
+      .then((data) => setSectors(data.items || []))
+      .catch(() => setSectors([]))
+  }, [])
 
   async function loadClientes() {
     setLoading(true)
@@ -134,6 +143,7 @@ export default function ClientesPage() {
         slug: form.slug || null,
         nit: form.nit,
         whatsapp_number: form.whatsapp_number || null,
+        sector_id: form.sector_id || null,
       })
       setModalOpen(false)
       setPage(1)
@@ -297,6 +307,28 @@ export default function ClientesPage() {
               setForm({ ...form, whatsapp_number: e.target.value })
             }
           />
+
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="cliente-sector"
+              className="text-sm font-medium text-v-night"
+            >
+              Sector <span className="font-normal text-gray-400">(opcional)</span>
+            </label>
+            <select
+              id="cliente-sector"
+              value={form.sector_id}
+              onChange={(e) => setForm({ ...form, sector_id: e.target.value })}
+              className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
+            >
+              <option value="">Sin sector asignado</option>
+              {sectors.map((sector) => (
+                <option key={sector.id} value={sector.id}>
+                  {sector.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {formError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">

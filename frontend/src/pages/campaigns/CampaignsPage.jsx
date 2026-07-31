@@ -9,6 +9,7 @@ import {
 } from '../../services/campaignService'
 import { getActivePOS } from '../../services/posService'
 import { getTenants } from '../../services/tenantService'
+import { getBrands } from '../../services/brandService'
 import Table from '../../components/ui/Table'
 import Badge from '../../components/ui/Badge'
 import Modal from '../../components/ui/Modal'
@@ -60,6 +61,7 @@ function emptyForm() {
     name: '',
     description: '',
     activity_type: 'sorteo',
+    brand_id: '',
     objective_type: '',
     objective_label: '',
     objective_value: '',
@@ -117,6 +119,8 @@ export default function CampaignsPage() {
 
   const [activePOS, setActivePOS] = useState([])
   const [posLoading, setPosLoading] = useState(false)
+  const [wizardBrands, setWizardBrands] = useState([])
+  const [brandsLoading, setBrandsLoading] = useState(false)
 
   const [wizardTenantId, setWizardTenantId] = useState(null)
   const [wizardTenantName, setWizardTenantName] = useState('')
@@ -311,6 +315,17 @@ export default function CampaignsPage() {
 
   async function handleNext() {
     const nextStep = step + 1
+    if (nextStep === 1) {
+      setBrandsLoading(true)
+      try {
+        const data = await getBrands(wizardTenantId, { is_active: true })
+        setWizardBrands(Array.isArray(data) ? data : (data.items || []))
+      } catch {
+        setWizardBrands([])
+      } finally {
+        setBrandsLoading(false)
+      }
+    }
     if (nextStep === 3) {
       setPosLoading(true)
       try {
@@ -365,6 +380,7 @@ export default function CampaignsPage() {
         name: form.name,
         description: form.description || null,
         activity_type: form.activity_type,
+        brand_id: form.brand_id || null,
         objective_type: form.objective_type || null,
         objective_label: form.objective_type === 'otros' ? (form.objective_label || null) : null,
         objective_value: form.objective_value ? Number(form.objective_value) : null,
@@ -817,6 +833,37 @@ export default function CampaignsPage() {
                 ))}
               </select>
             </div>
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="campaign-brand"
+                className="text-sm font-medium text-v-night"
+              >
+                Marca <span className="font-normal text-gray-400">(opcional)</span>
+              </label>
+              {brandsLoading ? (
+                <p className="text-sm text-gray-400">Cargando marcas...</p>
+              ) : (
+                <select
+                  id="campaign-brand"
+                  value={form.brand_id}
+                  onChange={(e) => setForm({ ...form, brand_id: e.target.value })}
+                  className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
+                >
+                  <option value="">Sin marca asignada</option>
+                  {wizardBrands.map((brand) => (
+                    <option key={brand.id} value={brand.id}>
+                      {brand.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {wizardBrands.length === 0 && !brandsLoading && (
+                <p className="text-xs text-gray-400">
+                  Este cliente aún no tiene marcas registradas.
+                </p>
+              )}
+            </div>
+
             <div className="flex flex-col gap-1.5">
               <label
                 htmlFor="campaign-objective-type"

@@ -9,6 +9,7 @@ import CampaignsPage from './pages/campaigns/CampaignsPage'
 import POSPage from './pages/pos/POSPage'
 import UsersPage from './pages/users/UsersPage'
 import ConfiguracionPage from './pages/configuracion/ConfiguracionPage'
+import SectorsPage from './pages/settings/SectorsPage'
 import ProfilePage from './pages/profile/ProfilePage'
 
 export default function App() {
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="pos" element={<POSPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="configuracion" element={<ConfiguracionPage />} />
+        <Route path="configuracion/sectores" element={<SectorsPage />} />
         <Route path="profile" element={<ProfilePage />} />
       </Route>
 
