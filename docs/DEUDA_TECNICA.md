@@ -40,3 +40,21 @@ El backend de 04B+04C se implementa primero para validar la lógica end-to-end. 
 Inmediatamente después de que 04B+04C pasen QA — antes de la primera demo con cliente real.
 
 ---
+
+## DT-003 · Token de GitHub embebido en la URL del remote (seguridad)
+
+**Qué es:**
+El remote `origin` tiene el Personal Access Token embebido en la URL (`https://usuario:ghp_...@github.com/...`), por lo que el token aparece en texto plano en la salida de comandos de git. Un token quedó expuesto de esa forma el 2026-07-31.
+
+**Acción requerida:**
+1. Revocar el token expuesto en GitHub → Settings → Developer settings → Personal access tokens.
+2. Generar un token nuevo.
+3. Limpiar el remote: `git remote set-url origin https://github.com/vktoriaTech/ValidiaApp.git` (sin `usuario:token@`) y dejar que el credential helper del sistema guarde el token aparte.
+
+**Por qué se aplazó:**
+Decisión de Bryan (2026-07-31) — se atiende cuando se revise todo el registro de deuda técnica.
+
+**Prioridad:**
+Alta (seguridad). Es una credencial de escritura al repo; conviene rotarla antes que los ítems de tooling. Mientras el token siga embebido, seguirá apareciendo en cada salida de git.
+
+---

@@ -154,31 +154,28 @@ def select_winners(
     eligible_participations: list[Participation],
     seed: str,
 ) -> list[WinnerAssignment]:
-    """[D-003] Simple random draw, no participant exclusion between prizes.
-
-    Builds a ticket pool (one entry per ticket, not deduplicated by
-    participant), shuffles it deterministically with `seed`, then consumes it
-    sequentially — one pool position per prize unit. Entries are never
-    removed, so the same participation can be drawn again for a later prize
-    if another one of its tickets lands on a later position (R08).
+    """[D-003/D-006] Random draw WITH replacement — each prize unit is an
+    independent seeded pick over the full ticket pool, and the winner's
+    entries stay in the pool. A single ticket can therefore win more than one
+    prize (R08); reproducing a draw requires the same seed AND the same
+    prize order, since each pick advances the shared RNG state.
     """
     pool: list[uuid.UUID] = []
     for participation in eligible_participations:
         pool.extend([participation.id] * participation.tickets)
 
+    if not pool:
+        return []
+
     rng = random.Random(seed)
-    rng.shuffle(pool)
 
     prizes = (campaign.rules or {}).get("prizes") or []
     assignments: list[WinnerAssignment] = []
-    pool_index = 0
     for prize in prizes:
         prize_name = prize.get("name")
         quantity = int(prize.get("quantity", 1))
         for _ in range(quantity):
-            if pool_index >= len(pool):
-                return assignments
-            assignments.append(WinnerAssignment(participation_id=pool[pool_index], prize_name=prize_name))
-            pool_index += 1
+            winner_id = rng.choice(pool)
+            assignments.append(WinnerAssignment(participation_id=winner_id, prize_name=prize_name))
 
     return assignments

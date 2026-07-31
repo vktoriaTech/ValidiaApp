@@ -181,7 +181,20 @@ def create_participation(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail="Este CUFE ya participó en esta actividad")
 
-    result = rule_module.evaluate_participation(db, campaign, invoice, participant, None, {})
+    try:
+        result = rule_module.evaluate_participation(db, campaign, invoice, participant, None, {})
+    except HTTPException as exc:
+        # D-005 — POS/date hard rejects raise before any Participation is
+        # created (the pool must stay clean), but they still need a trace:
+        # audit and commit here, then let the 422 propagate unchanged.
+        reason = exc.detail.get("reason") if isinstance(exc.detail, dict) else None
+        _audit(
+            db, tenant_id=campaign.tenant_id, user_id=None,
+            action="campaign.participation_rejected", entity_id=str(campaign.id),
+            payload={"reason": reason, "cufe": payload.cufe, "participant_id": str(participant.id)},
+        )
+        db.commit()
+        raise
 
     participation = Participation(
         tenant_id=campaign.tenant_id,
