@@ -1,5 +1,7 @@
 from .audit_log import AuditLog
 from .base import Base, BaseModel
+from .brand import Brand
+from .brand_category import BrandCategory
 from .campaign import ActivityType, Campaign, CampaignStatus
 from .campaign_expense import CampaignExpense
 from .campaign_mercaderista import CampaignMercaderista
@@ -13,6 +15,9 @@ from .participant import Participant
 from .participation import Participation
 from .pos import POS, POSType
 from .prize import Prize
+from .product import Product
+from .product_sku import ProductSKU
+from .sector import Sector
 from .subscription import PLAN_MAX_USERS, Subscription, SubscriptionPlan, SubscriptionStatus
 from .tenant import Tenant, TenantStatus
 from .user import User, UserRole
@@ -46,4 +51,9 @@ __all__ = [
     "SubscriptionPlan",
     "SubscriptionStatus",
     "PLAN_MAX_USERS",
+    "Sector",
+    "Brand",
+    "BrandCategory",
+    "Product",
+    "ProductSKU",
 ]

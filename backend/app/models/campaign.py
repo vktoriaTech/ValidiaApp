@@ -47,6 +47,9 @@ class Campaign(BaseModel):
     budget: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     brand: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("brands.id", ondelete="SET NULL"), nullable=True
+    )
     starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     start_time: Mapped[time | None] = mapped_column(Time, nullable=True)

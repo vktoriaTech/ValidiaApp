@@ -21,6 +21,7 @@ class TenantCreate(BaseModel):
     slug: str | None = None
     nit: str
     whatsapp_number: str | None = None
+    sector_id: uuid.UUID | None = None
     categories: list[CategoryItem] = []
     brands: list[BrandItem] = []
 
@@ -30,6 +31,7 @@ class TenantUpdate(BaseModel):
     slug: str | None = None
     nit: str | None = None
     whatsapp_number: str | None = None
+    sector_id: uuid.UUID | None = None
     categories: list[CategoryItem] | None = None
     brands: list[BrandItem] | None = None
 
@@ -41,6 +43,7 @@ class TenantResponse(BaseModel):
     nit: str
     status: TenantStatus
     whatsapp_number: str | None = None
+    sector_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -60,6 +63,7 @@ class TenantDetailResponse(BaseModel):
     nit: str
     status: TenantStatus
     whatsapp_number: str | None
+    sector_id: uuid.UUID | None
     categories: list[CategoryItem]
     brands: list[BrandItem]
     active_users: int

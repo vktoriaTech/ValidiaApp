@@ -5,6 +5,7 @@ import {
   updateTenant,
   updateTenantStatus,
 } from '../../services/tenantService'
+import { getSectors } from '../../services/sectorService'
 import Breadcrumb from '../../components/ui/Breadcrumb'
 import Badge from '../../components/ui/Badge'
 import Card from '../../components/ui/Card'
@@ -15,6 +16,7 @@ import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import POSManager from '../../components/pos/POSManager'
 import UsersManager from '../../components/users/UsersManager'
+import BrandsManager from '../../components/brands/BrandsManager'
 import { formatDateTime } from '../../utils/formatDate'
 
 const STATUS_BADGE = {
@@ -33,6 +35,7 @@ const TABS = [
   { key: 'info', label: 'Información general' },
   { key: 'pos', label: 'Puntos de venta' },
   { key: 'users', label: 'Usuarios' },
+  { key: 'brands', label: 'Marcas' },
 ]
 
 function formFromCliente(cliente) {
@@ -41,6 +44,7 @@ function formFromCliente(cliente) {
     nit: cliente.nit || '',
     slug: cliente.slug || '',
     whatsapp_number: cliente.whatsapp_number || '',
+    sector_id: cliente.sector_id || '',
     status: cliente.status || 'active',
   }
 }
@@ -51,6 +55,8 @@ export default function ClienteDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState('info')
+
+  const [sectors, setSectors] = useState([])
 
   const [isEditOpen, setEditOpen] = useState(false)
   const [editForm, setEditForm] = useState(null)
@@ -76,6 +82,12 @@ export default function ClienteDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteId])
 
+  useEffect(() => {
+    getSectors({ limit: 50 })
+      .then((data) => setSectors(data.items || []))
+      .catch(() => setSectors([]))
+  }, [])
+
   function openEditModal() {
     setEditForm(formFromCliente(cliente))
     setEditError('')
@@ -100,6 +112,7 @@ export default function ClienteDetailPage() {
         slug: editForm.slug || null,
         nit: editForm.nit,
         whatsapp_number: editForm.whatsapp_number || null,
+        sector_id: editForm.sector_id || null,
       })
       if (editForm.status !== cliente.status) {
         await updateTenantStatus(clienteId, { status: editForm.status })
@@ -208,6 +221,14 @@ export default function ClienteDetailPage() {
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-gray-400">
+                Sector
+              </dt>
+              <dd className="mt-1 text-sm text-v-night">
+                {sectors.find((s) => s.id === cliente.sector_id)?.name || '—'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-gray-400">
                 Fecha creación
               </dt>
               <dd className="mt-1 text-sm text-v-night">
@@ -228,6 +249,7 @@ export default function ClienteDetailPage() {
 
       {activeTab === 'pos' && <POSManager tenantId={clienteId} />}
       {activeTab === 'users' && <UsersManager tenantId={clienteId} />}
+      {activeTab === 'brands' && <BrandsManager tenantId={clienteId} />}
 
       <Modal
         isOpen={isEditOpen}
@@ -265,6 +287,30 @@ export default function ClienteDetailPage() {
                 setEditForm({ ...editForm, whatsapp_number: e.target.value })
               }
             />
+
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="edit-cliente-sector"
+                className="text-sm font-medium text-v-night"
+              >
+                Sector
+              </label>
+              <select
+                id="edit-cliente-sector"
+                value={editForm.sector_id}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, sector_id: e.target.value })
+                }
+                className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
+              >
+                <option value="">Sin sector asignado</option>
+                {sectors.map((sector) => (
+                  <option key={sector.id} value={sector.id}>
+                    {sector.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <div className="flex flex-col gap-1.5">
               <label

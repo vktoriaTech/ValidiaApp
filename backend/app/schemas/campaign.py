@@ -64,6 +64,7 @@ class CampaignCreate(BaseModel):
     budget: Decimal | None = None
     category: str | None = None
     brand: str | None = None
+    brand_id: uuid.UUID | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     start_time: time | None = None
@@ -87,6 +88,7 @@ class CampaignUpdate(BaseModel):
     budget: Decimal | None = None
     category: str | None = None
     brand: str | None = None
+    brand_id: uuid.UUID | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     start_time: time | None = None
@@ -152,6 +154,7 @@ class CampaignDetailResponse(BaseModel):
     budget: Decimal | None
     category: str | None
     brand: str | None
+    brand_id: uuid.UUID | None
     starts_at: datetime | None
     ends_at: datetime | None
     start_time: time | None

@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
+from app.models.sector import Sector
 from app.models.subscription import PLAN_MAX_USERS, Subscription, SubscriptionPlan, SubscriptionStatus
 from app.models.tenant import Tenant, TenantStatus
 from app.models.user import User, UserRole
@@ -93,6 +94,11 @@ def _audit(
     ))
 
 
+def _validate_sector(db: Session, sector_id: uuid.UUID) -> None:
+    if db.get(Sector, sector_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sector no encontrado")
+
+
 def _to_response(tenant: Tenant) -> TenantResponse:
     return TenantResponse(
         id=tenant.id,
@@ -101,6 +107,7 @@ def _to_response(tenant: Tenant) -> TenantResponse:
         nit=tenant.nit,
         status=tenant.status,
         whatsapp_number=tenant.whatsapp_number,
+        sector_id=tenant.sector_id,
         created_at=tenant.created_at,
         updated_at=tenant.updated_at,
     )
@@ -142,6 +149,7 @@ def _build_detail(db: Session, tenant: Tenant) -> TenantDetailResponse:
         nit=tenant.nit,
         status=tenant.status,
         whatsapp_number=tenant.whatsapp_number,
+        sector_id=tenant.sector_id,
         categories=categories,
         brands=brands,
         active_users=active_users,
@@ -156,6 +164,8 @@ def create_tenant(db: Session, payload: TenantCreate, current_user: User) -> Ten
     slug = payload.slug or _slugify(payload.name)
     if db.query(Tenant).filter(Tenant.slug == slug).first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El slug ya existe")
+    if payload.sector_id is not None:
+        _validate_sector(db, payload.sector_id)
 
     extra: dict = {}
     if payload.categories:
@@ -169,6 +179,7 @@ def create_tenant(db: Session, payload: TenantCreate, current_user: User) -> Ten
         nit=payload.nit,
         status=TenantStatus.active,
         whatsapp_number=payload.whatsapp_number,
+        sector_id=payload.sector_id,
         extra_data=extra or None,
     )
     db.add(tenant)
@@ -254,6 +265,14 @@ def update_tenant(
         tenant.nit = payload.nit
     if payload.whatsapp_number is not None:
         tenant.whatsapp_number = payload.whatsapp_number
+    if payload.sector_id is not None and payload.sector_id != tenant.sector_id:
+        _validate_sector(db, payload.sector_id)
+        tenant.sector_id = payload.sector_id
+        _audit(
+            db, tenant_id=tenant.id, user_id=current_user.id,
+            action="tenant.sector_assigned", entity="tenant", entity_id=str(tenant.id),
+            payload={"sector_id": str(payload.sector_id)},
+        )
 
     extra = dict(tenant.extra_data or {})
     if payload.categories is not None:

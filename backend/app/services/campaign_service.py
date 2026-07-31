@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core.utils import slugify
 from app.models.audit_log import AuditLog
+from app.models.brand import Brand
 from app.models.campaign import Campaign, CampaignStatus
 from app.models.campaign_expense import CampaignExpense
 from app.models.campaign_mercaderista import CampaignMercaderista
@@ -111,6 +112,15 @@ def _require_draft(campaign: Campaign) -> None:
     if campaign.status != CampaignStatus.draft:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Solo se pueden editar campañas en estado draft")
+
+
+def _validate_brand(db: Session, tenant_id: uuid.UUID, brand_id: uuid.UUID | None) -> None:
+    if brand_id is None:
+        return
+    brand = db.query(Brand).filter(Brand.id == brand_id, Brand.tenant_id == tenant_id).first()
+    if brand is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="La marca no pertenece a este cliente")
 
 # ── Conversion helpers ────────────────────────────────────────────────────────
 
@@ -248,6 +258,7 @@ def create_campaign(
     db: Session, tenant_id: uuid.UUID, payload: CampaignCreate, current_user: User
 ) -> CampaignResponse:
     _check_write_access(current_user, tenant_id)
+    _validate_brand(db, tenant_id, payload.brand_id)
 
     campaign = Campaign(
         tenant_id=tenant_id,
@@ -260,6 +271,7 @@ def create_campaign(
         budget=payload.budget,
         category=payload.category,
         brand=payload.brand,
+        brand_id=payload.brand_id,
         starts_at=payload.starts_at,
         ends_at=payload.ends_at,
         start_time=payload.start_time,
@@ -277,6 +289,10 @@ def create_campaign(
         _sync_prizes(db, campaign, payload.prizes)
     if payload.pos_ids:
         _sync_campaign_pos(db, campaign, payload.pos_ids)
+    if payload.brand_id:
+        _audit(db, tenant_id=tenant_id, user_id=current_user.id,
+               action="campaign.brand_assigned", entity_id=str(campaign.id),
+               payload={"brand_id": str(payload.brand_id)})
 
     _audit(db, tenant_id=tenant_id, user_id=current_user.id,
            action="campaign.created", entity_id=str(campaign.id),
@@ -361,6 +377,7 @@ def get_campaign(
         budget=campaign.budget,
         category=campaign.category,
         brand=campaign.brand,
+        brand_id=campaign.brand_id,
         starts_at=campaign.starts_at,
         ends_at=campaign.ends_at,
         start_time=campaign.start_time,
@@ -401,6 +418,12 @@ def update_campaign(
     if payload.budget is not None:        campaign.budget = payload.budget
     if payload.category is not None:      campaign.category = payload.category
     if payload.brand is not None:         campaign.brand = payload.brand
+    if payload.brand_id is not None and payload.brand_id != campaign.brand_id:
+        _validate_brand(db, tenant_id, payload.brand_id)
+        campaign.brand_id = payload.brand_id
+        _audit(db, tenant_id=tenant_id, user_id=current_user.id,
+               action="campaign.brand_assigned", entity_id=str(campaign.id),
+               payload={"brand_id": str(payload.brand_id)})
     if payload.starts_at is not None:     campaign.starts_at = payload.starts_at
     if payload.ends_at is not None:       campaign.ends_at = payload.ends_at
     if payload.start_time is not None:    campaign.start_time = payload.start_time

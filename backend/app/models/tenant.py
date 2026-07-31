@@ -1,7 +1,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Enum, String, Text
+from sqlalchemy import Enum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,3 +27,6 @@ class Tenant(BaseModel):
     whatsapp_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     extra_data: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
+    sector_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sectors.id", ondelete="SET NULL"), nullable=True
+    )
