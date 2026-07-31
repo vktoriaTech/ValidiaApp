@@ -79,6 +79,23 @@ Ambas se configuran por actividad en el wizard y no se mezclan en el código.
 | `rules/sorteo.py` | **No existe.** Este spec lo define. |
 | `participation_service.py` | **No existe.** Lo define SPEC-04B. Este spec se monta sobre él. |
 
+### 3.1 Reconciliación de campos con el modelo real (autoritativo)
+
+Los nombres de campo usados en el resto de este spec eran ilustrativos. Estos son los campos **reales** en el código; **prevalecen sobre cualquier nombre distinto que aparezca más abajo**:
+
+| Referencia en el spec | Campo real en el modelo | Notas |
+|---|---|---|
+| `invoice.total_amount` | `Invoice.amount` — `Numeric(14,2)`, **nullable** | Guardar contra `None` antes de comparar/sumar. |
+| `invoice.issue_date` / `Invoice.date` | `Invoice.invoice_date` — `DateTime(tz)`, **nullable** | Guardar contra `None` antes de comparar con el rango. |
+| `invoice.pos_id` | **No existe.** La factura trae `Invoice.pos_nit` — `String(20)` | El vínculo factura↔POS es por NIT, no por UUID. |
+
+**Implicación para R02 (POS elegible).** `rules.pos_ids` contiene UUIDs de `POS`, pero la factura no tiene `pos_id`. La validación es:
+1. Cargar los `POS` cuyo `id` esté en `rules.pos_ids`, dentro del tenant de la actividad.
+2. Tomar su campo `nit_emisor` (`String(20)`, el NIT del emisor).
+3. La factura es elegible por POS si `invoice.pos_nit` coincide con el `nit_emisor` de alguno de esos POS.
+
+Si `rules.pos_ids` está vacío, se aceptan todos los POS del tenant (no se filtra por NIT).
+
 ---
 
 ## 4. Flujo end-to-end (Sorteo)
@@ -100,9 +117,9 @@ POST /api/v1/campaigns/{campaign_id}/participations
   4. Valida CUFE → crea o reutiliza Invoice
         ↓
   [Motor Sorteo — este spec, evaluate_participation()]
-  5. Verifica que Invoice.date esté dentro del periodo de la actividad
+  5. Verifica que Invoice.invoice_date esté dentro del periodo de la actividad
      → Si falla: rechaza con reason="invoice_date_out_of_range". El monto NO acumula.
-  6. Verifica que Invoice.pos_id esté en la lista de POS de la actividad (si está configurado)
+  6. Verifica que Invoice.pos_nit coincida con el nit_emisor de algún POS de rules.pos_ids (si está configurado)
      → Si falla: rechaza con reason="pos_not_eligible". El monto NO acumula.
   7. Verifica monto:
      · ticket_mode == "single":      invoice.total >= min_amount → elegible
@@ -333,11 +350,12 @@ def evaluate_participation(
     extra: dict,   # no usado en Sorteo
 ) -> ParticipationResult:
     """
-    1. Verifica que invoice.issue_date esté en [rules.date_start, rules.date_end].
-    2. Verifica que invoice.pos_id esté en rules.pos_ids (si la lista no está vacía).
+    1. Verifica que invoice.invoice_date esté en [rules.date_start, rules.date_end].
+    2. Verifica POS elegible: invoice.pos_nit coincide con el nit_emisor de algún POS
+       cuyo id esté en rules.pos_ids (si la lista no está vacía). Ver §3.1.
     3. Según ticket_mode:
-       - "single":      monto_efectivo = invoice.total_amount
-       - "accumulated": monto_efectivo = accumulated_amount_anterior + invoice.total_amount
+       - "single":      monto_efectivo = invoice.amount
+       - "accumulated": monto_efectivo = accumulated_amount_anterior + invoice.amount
     4. tickets = floor(monto_efectivo / rules.min_amount)
     5. nuevo_saldo = monto_efectivo % rules.min_amount
     6. Actualiza CampaignParticipantAccumulation.accumulated_amount = nuevo_saldo (perpetuo, toda la vigencia)
