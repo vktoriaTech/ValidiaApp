@@ -1,10 +1,14 @@
-"""Covers SPEC-04C §12 test cases T05, T06, T07/T08, T09, T12, T13, T14."""
+"""Covers SPEC-04C §12 test cases T05, T06, T07/T08, T09, T12, T13, T14, plus
+D-005 (hard-reject auditing) and D-006 (draw with replacement)."""
 from datetime import datetime, timezone
 
 import pytest
 from fastapi import HTTPException
 
+from app.models.audit_log import AuditLog
 from app.models.campaign import CampaignStatus
+from app.models.campaign_participant_accumulation import CampaignParticipantAccumulation
+from app.models.participation import Participation
 from app.schemas.participation import DrawRequest, ParticipationCreate
 from app.services import cufe_service, participation_service
 from app.services.rules import sorteo
@@ -198,3 +202,116 @@ def test_t14_draw_is_idempotent(db, monkeypatch):
     assert call_count["n"] == 1
     assert [w.model_dump() for w in first.winners] == [w.model_dump() for w in second.winners]
     assert first.drawn_at == second.drawn_at
+
+
+# ── D-005 — POS/date hard rejects are audited even though nothing is saved ─────
+
+def test_d005_pos_hard_reject_is_audited_and_not_persisted(db, monkeypatch):
+    tenant = make_tenant(db)
+    campaign = make_campaign(
+        db, tenant,
+        rules={
+            "ticket_mode": "single",
+            "min_amount": 100000,
+            "pos_ids": ["11111111-1111-1111-1111-111111111111"],  # no matching POS exists
+        },
+    )
+    participant = make_participant(db, tenant, cedula="3000000000")
+    accept_terms(db, campaign, participant)
+    db.commit()
+
+    monkeypatch.setattr(
+        cufe_service, "validate_cufe",
+        lambda cufe, tenant_id: fake_dian_response(amount=150000, pos_nit="999999999"),
+    )
+
+    payload = ParticipationCreate(cufe="CUFE-D005-POS", cedula="3000000000", channel="whatsapp")
+
+    with pytest.raises(HTTPException) as exc_info:
+        participation_service.create_participation(db, campaign.id, payload)
+    assert exc_info.value.status_code == 422
+
+    # The pool stays clean — no Participation for a hard reject.
+    assert db.query(Participation).filter(Participation.campaign_id == campaign.id).count() == 0
+
+    entry = (
+        db.query(AuditLog)
+        .filter(AuditLog.entity_id == str(campaign.id), AuditLog.action == "campaign.participation_rejected")
+        .order_by(AuditLog.created_at.desc())
+        .first()
+    )
+    assert entry is not None
+    assert entry.payload == {
+        "reason": "pos_not_eligible",
+        "cufe": "CUFE-D005-POS",
+        "participant_id": str(participant.id),
+    }
+
+
+def test_d005_date_hard_reject_is_audited_and_amount_does_not_accumulate(db, monkeypatch):
+    tenant = make_tenant(db)
+    campaign = make_campaign(
+        db, tenant,
+        rules={
+            "ticket_mode": "accumulated",
+            "min_amount": 100000,
+            "date_start": "2026-01-01",
+            "date_end": "2026-01-31",
+        },
+    )
+    participant = make_participant(db, tenant, cedula="3000000001")
+    accept_terms(db, campaign, participant)
+    db.commit()
+
+    out_of_range_date = datetime(2026, 3, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        cufe_service, "validate_cufe",
+        lambda cufe, tenant_id: fake_dian_response(amount=150000, invoice_date=out_of_range_date),
+    )
+
+    payload = ParticipationCreate(cufe="CUFE-D005-DATE", cedula="3000000001", channel="whatsapp")
+
+    with pytest.raises(HTTPException) as exc_info:
+        participation_service.create_participation(db, campaign.id, payload)
+    assert exc_info.value.status_code == 422
+
+    assert db.query(Participation).filter(Participation.campaign_id == campaign.id).count() == 0
+
+    entry = (
+        db.query(AuditLog)
+        .filter(AuditLog.entity_id == str(campaign.id), AuditLog.action == "campaign.participation_rejected")
+        .order_by(AuditLog.created_at.desc())
+        .first()
+    )
+    assert entry is not None
+    assert entry.payload["reason"] == "invoice_date_out_of_range"
+
+    # R06b — a hard reject must NOT touch the accumulated balance.
+    accumulation = db.query(CampaignParticipantAccumulation).filter(
+        CampaignParticipantAccumulation.campaign_id == campaign.id,
+        CampaignParticipantAccumulation.participant_id == participant.id,
+    ).first()
+    assert accumulation is None
+
+
+# ── D-006 — draw WITH replacement ────────────────────────────────────────────────
+
+def test_d006_single_ticket_can_win_more_than_one_prize(db):
+    """A pool with exactly one ticket has only one possible outcome per draw
+    regardless of the seed — this only holds if the winner's entry stays in
+    the pool between prizes (with replacement), proving D-006."""
+    tenant = make_tenant(db)
+    campaign = make_campaign(
+        db, tenant,
+        rules={"prizes": [{"name": "Carro", "quantity": 1}, {"name": "MasterClass", "quantity": 1}]},
+    )
+    participant = make_participant(db, tenant)
+    invoice = make_invoice(db, tenant, cufe="CUFE-D006", amount=100000)
+    participation = make_participation(db, campaign, participant, invoice, tickets=1)
+    db.commit()
+
+    assignments = sorteo.select_winners(campaign, [participation], seed="fixed-seed-for-test")
+
+    assert len(assignments) == 2
+    assert {a.participation_id for a in assignments} == {participation.id}
+    assert {a.prize_name for a in assignments} == {"Carro", "MasterClass"}
