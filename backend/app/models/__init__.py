@@ -5,6 +5,7 @@ from .brand_category import BrandCategory
 from .campaign import ActivityType, Campaign, CampaignStatus
 from .campaign_expense import CampaignExpense
 from .campaign_mercaderista import CampaignMercaderista
+from .campaign_participant_accumulation import CampaignParticipantAccumulation
 from .campaign_pos import CampaignPOS
 from .campaign_result import CampaignResult
 from .campaign_terms_acceptance import CampaignTermsAcceptance
@@ -36,6 +37,7 @@ __all__ = [
     "CampaignPOS",
     "CampaignVendor",
     "CampaignMercaderista",
+    "CampaignParticipantAccumulation",
     "CampaignExpense",
     "CampaignResult",
     "CampaignTermsAcceptance",

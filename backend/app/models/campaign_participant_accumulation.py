@@ -1,0 +1,37 @@
+import uuid
+from decimal import Decimal
+
+from sqlalchemy import ForeignKey, Numeric, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .base import BaseModel
+
+
+class CampaignParticipantAccumulation(BaseModel):
+    """Perpetual running balance of un-ticketed invoice amount per (campaign, participant).
+
+    Only used when a Sorteo's rules.ticket_mode == "accumulated" (SPEC-04C §5.1).
+    The balance is never reset by time windows — it carries for the whole
+    lifetime of the activity (D-002).
+    """
+
+    __tablename__ = "campaign_participant_accumulations"
+    __table_args__ = (
+        UniqueConstraint("campaign_id", "participant_id", name="uq_camp_part_accum_campaign_participant"),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    campaign_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    participant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("participants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    accumulated_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
+
+    tenant = relationship("Tenant", back_populates=None, foreign_keys=[tenant_id])
+    campaign = relationship("Campaign", back_populates=None, foreign_keys=[campaign_id])
+    participant = relationship("Participant", back_populates=None, foreign_keys=[participant_id])

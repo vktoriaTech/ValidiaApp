@@ -8,6 +8,8 @@ from app.api.v1.brands import router as brands_router
 from app.api.v1.campaigns import public_router as campaigns_public_router
 from app.api.v1.campaigns import router as campaigns_router
 from app.api.v1.cufe import router as cufe_router
+from app.api.v1.participations import public_router as participations_public_router
+from app.api.v1.participations import router as participations_router
 from app.api.v1.pos import router as pos_router
 from app.api.v1.products import router as products_router
 from app.api.v1.sectors import router as sectors_router
@@ -45,6 +47,8 @@ app.include_router(cufe_router, prefix=settings.API_V1_PREFIX)
 app.include_router(sectors_router, prefix=settings.API_V1_PREFIX)
 app.include_router(brands_router, prefix=settings.API_V1_PREFIX)
 app.include_router(products_router, prefix=settings.API_V1_PREFIX)
+app.include_router(participations_router, prefix=settings.API_V1_PREFIX)
+app.include_router(participations_public_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/health")
