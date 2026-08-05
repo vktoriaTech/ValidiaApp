@@ -52,7 +52,15 @@ const STATUS_OPTIONS = [
   { value: 'closed', label: 'Cerrada' },
 ]
 
-const STEPS = ['Cliente', 'Datos generales', 'Premios', 'POS y mecánica', 'Términos y Condiciones', 'Resumen']
+const STEPS = [
+  'Cliente',
+  'Datos generales',
+  'Premios',
+  'Mecánica',
+  'Reglas de participación',
+  'Términos y Condiciones',
+  'Resumen',
+]
 
 const PAGE_SIZE = 20
 
@@ -68,8 +76,10 @@ function emptyForm() {
     starts_at: '',
     ends_at: '',
     pos_ids: [],
-    participation_method: '',
-    prizes: [{ name: '', prize_type: 'articulo', quantity: 1 }],
+    mechanic: 'acumulacion',
+    prizes: [
+      { name: '', prize_type: 'articulo', quantity: 1, order: 1, min_amount: '', max_participations: '' },
+    ],
     terms_text: '',
   }
 }
@@ -350,7 +360,17 @@ export default function CampaignsPage() {
   function addPrize() {
     setForm({
       ...form,
-      prizes: [...form.prizes, { name: '', prize_type: 'articulo', quantity: 1 }],
+      prizes: [
+        ...form.prizes,
+        {
+          name: '',
+          prize_type: 'articulo',
+          quantity: 1,
+          order: form.prizes.length + 1,
+          min_amount: '',
+          max_participations: '',
+        },
+      ],
     })
   }
 
@@ -372,10 +392,30 @@ export default function CampaignsPage() {
     }
   }
 
+  // Builds Campaign.rules per SPEC-04C §3.2.6 from the wizard's prize rules.
+  function buildRules(prizes, posIds, startsAt, endsAt) {
+    const validPrizes = prizes.filter((prize) => prize.name.trim())
+    return {
+      mechanic: 'acumulacion',
+      date_start: startsAt ? startsAt.slice(0, 10) : null,
+      date_end: endsAt ? endsAt.slice(0, 10) : null,
+      pos_ids: posIds,
+      eligibility: {
+        type: 'threshold_per_prize',
+        prizes: validPrizes.map((prize) => ({
+          prize_order: Number(prize.order) || 1,
+          min_amount: Number(prize.min_amount) || 0,
+          max_participations: Number(prize.max_participations) || 1,
+        })),
+      },
+    }
+  }
+
   async function handleSubmit() {
     setFormError('')
     setSaving(true)
     try {
+      const validPrizes = form.prizes.filter((prize) => prize.name.trim())
       await createCampaign(wizardTenantId, {
         name: form.name,
         description: form.description || null,
@@ -386,17 +426,16 @@ export default function CampaignsPage() {
         objective_value: form.objective_value ? Number(form.objective_value) : null,
         starts_at: form.starts_at ? new Date(form.starts_at).toISOString() : null,
         ends_at: form.ends_at ? new Date(form.ends_at).toISOString() : null,
-        participation_method: form.participation_method || null,
+        participation_method: 'acumulacion',
         terms_text: form.terms_text.trim() || null,
         pos_ids: form.pos_ids,
-        prizes: form.prizes
-          .filter((prize) => prize.name.trim())
-          .map((prize, index) => ({
-            name: prize.name,
-            prize_type: prize.prize_type,
-            quantity: Number(prize.quantity) || 1,
-            order: index + 1,
-          })),
+        rules: buildRules(form.prizes, form.pos_ids, form.starts_at, form.ends_at),
+        prizes: validPrizes.map((prize) => ({
+          name: prize.name,
+          prize_type: prize.prize_type,
+          quantity: Number(prize.quantity) || 1,
+          order: Number(prize.order) || 1,
+        })),
       })
       setModalOpen(false)
       setPage(1)
@@ -455,6 +494,8 @@ export default function CampaignsPage() {
   }
 
   function startEditDetail() {
+    const eligibilityPrizes = detailCampaign.rules?.eligibility?.prizes || []
+    const ruleByOrder = Object.fromEntries(eligibilityPrizes.map((rule) => [rule.prize_order, rule]))
     setDetailEditForm({
       name: detailCampaign.name || '',
       description: detailCampaign.description || '',
@@ -466,11 +507,28 @@ export default function CampaignsPage() {
         ? detailCampaign.starts_at.slice(0, 16)
         : '',
       ends_at: detailCampaign.ends_at ? detailCampaign.ends_at.slice(0, 16) : '',
-      participation_method: detailCampaign.participation_method || '',
       terms_text: detailCampaign.terms_text || '',
+      prizeRules: (detailCampaign.prizes || []).map((prize) => ({
+        id: prize.id,
+        name: prize.name,
+        prize_type: prize.prize_type,
+        quantity: prize.quantity,
+        order: prize.order,
+        min_amount: ruleByOrder[prize.order]?.min_amount ?? '',
+        max_participations: ruleByOrder[prize.order]?.max_participations ?? '',
+      })),
     })
     setDetailEditError('')
     setEditingDetail(true)
+  }
+
+  function updateDetailPrizeRule(index, field, value) {
+    setDetailEditForm({
+      ...detailEditForm,
+      prizeRules: detailEditForm.prizeRules.map((rule, i) =>
+        i === index ? { ...rule, [field]: value } : rule,
+      ),
+    })
   }
 
   async function saveDetailEdit(e) {
@@ -478,6 +536,21 @@ export default function CampaignsPage() {
     setDetailEditError('')
     setDetailSaving(true)
     try {
+      const rules = {
+        ...(detailCampaign.rules || {}),
+        mechanic: 'acumulacion',
+        date_start: detailEditForm.starts_at ? detailEditForm.starts_at.slice(0, 10) : null,
+        date_end: detailEditForm.ends_at ? detailEditForm.ends_at.slice(0, 10) : null,
+        pos_ids: (detailCampaign.pos || []).map((pos) => pos.id),
+        eligibility: {
+          type: 'threshold_per_prize',
+          prizes: detailEditForm.prizeRules.map((rule) => ({
+            prize_order: rule.order,
+            min_amount: Number(rule.min_amount) || 0,
+            max_participations: Number(rule.max_participations) || 1,
+          })),
+        },
+      }
       await updateCampaign(detailTenantId, detailCampaign.id, {
         name: detailEditForm.name,
         description: detailEditForm.description || null,
@@ -491,8 +564,15 @@ export default function CampaignsPage() {
         ends_at: detailEditForm.ends_at
           ? new Date(detailEditForm.ends_at).toISOString()
           : null,
-        participation_method: detailEditForm.participation_method || null,
+        participation_method: 'acumulacion',
         terms_text: detailEditForm.terms_text.trim() || null,
+        rules,
+        prizes: detailEditForm.prizeRules.map((rule) => ({
+          name: rule.name,
+          prize_type: rule.prize_type,
+          quantity: rule.quantity,
+          order: rule.order,
+        })),
       })
       const refreshed = await getCampaign(detailTenantId, detailCampaign.id)
       setDetailCampaign(refreshed)
@@ -957,6 +1037,14 @@ export default function CampaignsPage() {
                     value={prize.name}
                     onChange={(e) => updatePrize(index, 'name', e.target.value)}
                   />
+                  <Input
+                    id={`prize-order-${index}`}
+                    type="number"
+                    min="1"
+                    label="Orden (jerarquía, mayor a menor)"
+                    value={prize.order}
+                    onChange={(e) => updatePrize(index, 'order', e.target.value)}
+                  />
                   <div className="grid grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1.5">
                       <label className="text-sm font-medium text-v-night">
@@ -1048,26 +1136,88 @@ export default function CampaignsPage() {
 
             <div className="flex flex-col gap-1.5">
               <label
-                htmlFor="campaign-participation-method"
+                htmlFor="campaign-mechanic"
                 className="text-sm font-medium text-v-night"
               >
-                Mecánica de participación
+                Mecánica
               </label>
-              <textarea
-                id="campaign-participation-method"
-                rows={3}
-                value={form.participation_method}
-                onChange={(e) =>
-                  setForm({ ...form, participation_method: e.target.value })
-                }
-                placeholder="Describe cómo participan los clientes"
+              <select
+                id="campaign-mechanic"
+                value={form.mechanic}
+                onChange={(e) => setForm({ ...form, mechanic: e.target.value })}
                 className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
-              />
+              >
+                <option value="acumulacion">Acumulación de factura</option>
+              </select>
+              <p className="text-xs text-gray-400">
+                Única mecánica disponible en el MVP: el consumidor acumula el
+                monto de sus facturas válidas.
+              </p>
             </div>
           </div>
         )}
 
         {step === 4 && (
+          <div className="flex flex-col gap-4">
+            {(() => {
+              const validPrizeIndices = form.prizes
+                .map((prize, index) => ({ prize, index }))
+                .filter(({ prize }) => prize.name.trim())
+
+              if (validPrizeIndices.length === 0) {
+                return (
+                  <p className="text-sm text-gray-400">
+                    Agrega al menos un premio en el paso anterior para
+                    definir sus reglas de participación.
+                  </p>
+                )
+              }
+
+              const multiplePrizes = validPrizeIndices.length > 1
+
+              return validPrizeIndices.map(({ prize, index }) => (
+                <div
+                  key={index}
+                  className={
+                    multiplePrizes
+                      ? 'flex flex-col gap-3 rounded-lg border border-v-border p-4'
+                      : 'flex flex-col gap-3'
+                  }
+                >
+                  {multiplePrizes && (
+                    <span className="text-sm font-medium text-v-night">
+                      {prize.name} (orden {prize.order})
+                    </span>
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      id={`prize-min-amount-${index}`}
+                      label="Monto mínimo (umbral)"
+                      inputMode="numeric"
+                      placeholder="100.000"
+                      value={formatMoneyCO(prize.min_amount)}
+                      onChange={(e) =>
+                        updatePrize(index, 'min_amount', parseMoneyCO(e.target.value))
+                      }
+                    />
+                    <Input
+                      id={`prize-max-participations-${index}`}
+                      type="number"
+                      min="1"
+                      label="Cantidad de participaciones (tope)"
+                      value={prize.max_participations}
+                      onChange={(e) =>
+                        updatePrize(index, 'max_participations', e.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+              ))
+            })()}
+          </div>
+        )}
+
+        {step === 5 && (
           <div className="flex flex-col gap-3">
             <div>
               <label className="mb-1 block text-sm font-medium text-v-night">
@@ -1091,7 +1241,7 @@ export default function CampaignsPage() {
           </div>
         )}
 
-        {step === 5 && (
+        {step === 6 && (
           <div className="flex flex-col gap-4 text-sm">
             <div>
               <p className="text-xs text-gray-400">Cliente</p>
@@ -1123,16 +1273,23 @@ export default function CampaignsPage() {
               <p>{form.pos_ids.length}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Premios</p>
+              <p className="text-xs text-gray-400">Mecánica</p>
+              <p>Acumulación de factura</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Premios y reglas de participación</p>
               <ul className="mt-1 list-inside list-disc">
                 {form.prizes
                   .filter((prize) => prize.name.trim())
                   .map((prize, index) => (
                     <li key={index}>
-                      {prize.name} — {PRIZE_TYPE_LABELS[prize.prize_type]}{' '}
+                      {prize.name} (orden {prize.order}) — {PRIZE_TYPE_LABELS[prize.prize_type]}{' '}
                       {MONEY_PRIZE_TYPES.includes(prize.prize_type)
                         ? `— $${formatMoneyCO(prize.quantity)}`
                         : `x ${prize.quantity}`}
+                      {prize.min_amount
+                        ? ` · Mínimo $${formatMoneyCO(prize.min_amount)} · Tope ${prize.max_participations || '—'}`
+                        : ' · Sin regla de participación definida'}
                     </li>
                   ))}
               </ul>
@@ -1268,25 +1425,73 @@ export default function CampaignsPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="detail-edit-participation"
-                className="text-sm font-medium text-v-night"
-              >
-                Mecánica de participación
+              <label className="text-sm font-medium text-v-night">
+                Mecánica
               </label>
-              <textarea
-                id="detail-edit-participation"
-                rows={3}
-                value={detailEditForm.participation_method}
-                onChange={(e) =>
-                  setDetailEditForm({
-                    ...detailEditForm,
-                    participation_method: e.target.value,
-                  })
-                }
-                className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
-              />
+              <select
+                value="acumulacion"
+                disabled
+                className="w-full rounded-lg border border-v-border bg-v-gray-50 px-3.5 py-2.5 text-sm text-v-night"
+              >
+                <option value="acumulacion">Acumulación de factura</option>
+              </select>
+              <p className="text-xs text-gray-400">
+                Única mecánica disponible en el MVP.
+              </p>
             </div>
+
+            <div className="flex flex-col gap-3">
+              <p className="text-sm font-medium text-v-night">
+                Reglas de participación
+              </p>
+              {detailEditForm.prizeRules.length === 0 ? (
+                <p className="text-xs text-gray-400">
+                  Esta actividad no tiene premios asociados.
+                </p>
+              ) : (
+                detailEditForm.prizeRules.map((rule, index) => {
+                  const multiplePrizes = detailEditForm.prizeRules.length > 1
+                  return (
+                    <div
+                      key={rule.id}
+                      className={
+                        multiplePrizes
+                          ? 'flex flex-col gap-3 rounded-lg border border-v-border p-4'
+                          : 'flex flex-col gap-3'
+                      }
+                    >
+                      {multiplePrizes && (
+                        <span className="text-sm font-medium text-v-night">
+                          {rule.name} (orden {rule.order})
+                        </span>
+                      )}
+                      <div className="grid grid-cols-2 gap-3">
+                        <Input
+                          id={`detail-prize-min-amount-${index}`}
+                          label="Monto mínimo (umbral)"
+                          inputMode="numeric"
+                          value={formatMoneyCO(rule.min_amount)}
+                          onChange={(e) =>
+                            updateDetailPrizeRule(index, 'min_amount', parseMoneyCO(e.target.value))
+                          }
+                        />
+                        <Input
+                          id={`detail-prize-max-participations-${index}`}
+                          type="number"
+                          min="1"
+                          label="Cantidad de participaciones (tope)"
+                          value={rule.max_participations}
+                          onChange={(e) =>
+                            updateDetailPrizeRule(index, 'max_participations', e.target.value)
+                          }
+                        />
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+
             <div className="flex flex-col gap-1.5">
               <label
                 htmlFor="detail-edit-terms"
@@ -1380,9 +1585,11 @@ export default function CampaignsPage() {
             </div>
 
             <div>
-              <p className="text-xs text-gray-400">Mecánica de participación</p>
+              <p className="text-xs text-gray-400">Mecánica</p>
               <p className="mt-1 text-v-night">
-                {detailCampaign.participation_method || '—'}
+                {detailCampaign.participation_method === 'acumulacion'
+                  ? 'Acumulación de factura'
+                  : detailCampaign.participation_method || '—'}
               </p>
             </div>
 
@@ -1399,12 +1606,35 @@ export default function CampaignsPage() {
                 <ul className="mt-1 list-inside list-disc">
                   {detailCampaign.prizes.map((prize) => (
                     <li key={prize.id}>
-                      {prize.name} — {PRIZE_TYPE_LABELS[prize.prize_type] || prize.prize_type}{' '}
+                      {prize.name} (orden {prize.order}) — {PRIZE_TYPE_LABELS[prize.prize_type] || prize.prize_type}{' '}
                       {MONEY_PRIZE_TYPES.includes(prize.prize_type)
                         ? `— $${formatMoneyCO(prize.quantity)}`
                         : `x ${prize.quantity}`}
                     </li>
                   ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-gray-400">Sin premios asociados.</p>
+              )}
+            </div>
+
+            <div>
+              <p className="text-xs text-gray-400">Reglas de participación</p>
+              {detailCampaign.prizes?.length ? (
+                <ul className="mt-1 list-inside list-disc">
+                  {detailCampaign.prizes.map((prize) => {
+                    const rule = (detailCampaign.rules?.eligibility?.prizes || []).find(
+                      (r) => r.prize_order === prize.order,
+                    )
+                    return (
+                      <li key={prize.id}>
+                        {prize.name}:{' '}
+                        {rule
+                          ? `mínimo $${formatMoneyCO(rule.min_amount)} · tope ${rule.max_participations}`
+                          : 'Sin regla configurada'}
+                      </li>
+                    )
+                  })}
                 </ul>
               ) : (
                 <p className="mt-1 text-gray-400">Sin premios asociados.</p>

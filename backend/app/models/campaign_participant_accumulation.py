@@ -9,11 +9,12 @@ from .base import BaseModel
 
 
 class CampaignParticipantAccumulation(BaseModel):
-    """Perpetual running balance of un-ticketed invoice amount per (campaign, participant).
+    """Perpetual TOTAL of valid invoice amount per (campaign, participant).
 
-    Only used when a Sorteo's rules.ticket_mode == "accumulated" (SPEC-04C §5.1).
-    The balance is never reset by time windows — it carries for the whole
-    lifetime of the activity (D-002).
+    [SPEC-04C v0.3 / D-007] `accumulated_amount` holds the total valid amount
+    accumulated, not a remainder — boletas per prize are derived from this
+    total at evaluation/draw time (§3.2.5). The balance is never reset by
+    time windows — it carries for the whole lifetime of the activity (D-002).
     """
 
     __tablename__ = "campaign_participant_accumulations"

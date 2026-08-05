@@ -1,12 +1,21 @@
-"""Sorteo rule module (SPEC-04C).
+"""Sorteo rule module (SPEC-04C v0.3, D-007).
 
 Implements the two functions required by the SPEC-04B contract:
-- evaluate_participation(): ticket math for a single invoice-backed participation.
-- select_winners(): random draw over the ticket pool for a system-closed activity.
+- evaluate_participation(): per-invoice accumulation + per-prize ticket math.
+- select_winners(): per-prize random draw over the ticket pool for a
+  system-closed activity.
 
 Field reconciliation (SPEC-04C §3.1, authoritative over any other name in the
 specs): Invoice.amount (not total_amount), Invoice.invoice_date (not
 issue_date), Invoice.pos_nit (no pos_id — POS eligibility is resolved by NIT).
+
+Rules model (§3.2, authoritative — supersedes the single-threshold/
+"remainder" model of v0.2):
+- Mechanic is always "acumulacion" (participation_method) — the single MVP
+  mechanic. Rules (JSONB) define eligibility per prize.
+- CampaignParticipantAccumulation.accumulated_amount holds the TOTAL valid
+  amount accumulated by a participant, not a remainder — boletas per prize
+  are derived from that total, never persisted directly (§3.2.5).
 """
 import random
 import uuid
@@ -20,8 +29,8 @@ from app.models.campaign import Campaign
 from app.models.campaign_participant_accumulation import CampaignParticipantAccumulation
 from app.models.invoice import Invoice
 from app.models.participant import Participant
-from app.models.participation import Participation
 from app.models.pos import POS
+from app.models.prize import Prize
 from app.services.rules.base import ParticipationResult, WinnerAssignment
 
 
@@ -65,6 +74,13 @@ def _get_or_create_accumulation(
     return accumulation
 
 
+def _boletas_for(total: Decimal, min_amount: Decimal, max_participations: int) -> int:
+    """§3.2.2: boletas_p = min(floor(total / umbral_p), tope_p) if total >= umbral_p, else 0."""
+    if min_amount <= 0 or total < min_amount:
+        return 0
+    return min(int(total // min_amount), max_participations)
+
+
 def evaluate_participation(
     db: Session,
     campaign: Campaign,
@@ -74,11 +90,9 @@ def evaluate_participation(
     extra: dict,
 ) -> ParticipationResult:
     rules = campaign.rules or {}
-    ticket_mode = rules.get("ticket_mode", "single")
-    min_amount = Decimal(str(rules.get("min_amount") or 0))
 
-    # R01 — invoice must fall inside the activity's date range. A structural
-    # mismatch (not "not yet eligible"): rejected up front, nothing persisted.
+    # R01 — invoice must fall inside the activity's date range. Hard reject:
+    # nothing persisted, the amount does not accumulate (D-005/R06b).
     if invoice.invoice_date is None or not _within_range(
         invoice.invoice_date, rules.get("date_start"), rules.get("date_end")
     ):
@@ -88,7 +102,8 @@ def evaluate_participation(
         )
 
     # R02 — invoice POS (by NIT) must be in the activity's allowed POS list,
-    # when one is configured. Empty pos_ids = all tenant POS allowed.
+    # when one is configured. Empty pos_ids = all tenant POS allowed. Hard
+    # reject: nothing persisted, the amount does not accumulate (D-005/R06b).
     pos_ids = rules.get("pos_ids") or []
     if pos_ids:
         allowed_nits = {
@@ -104,44 +119,48 @@ def evaluate_participation(
 
     invoice_amount = invoice.amount or Decimal("0")
 
-    accumulated_before: Decimal | None = None
-    accumulation: CampaignParticipantAccumulation | None = None
-    if ticket_mode == "accumulated":
-        accumulation = _get_or_create_accumulation(db, campaign.tenant_id, campaign.id, participant.id)
-        accumulated_before = accumulation.accumulated_amount or Decimal("0")
-        effective_amount = accumulated_before + invoice_amount
-    else:
-        effective_amount = invoice_amount
+    # §3.2.5 / §7.1 step 3 — single mechanic (acumulacion): the balance is
+    # the TOTAL valid amount accumulated, perpetual for the activity's whole
+    # lifetime (D-002), never a per-prize remainder.
+    accumulation = _get_or_create_accumulation(db, campaign.tenant_id, campaign.id, participant.id)
+    accumulation.accumulated_amount = (accumulation.accumulated_amount or Decimal("0")) + invoice_amount
+    total = accumulation.accumulated_amount
 
-    if min_amount > 0:
-        tickets = int(effective_amount // min_amount)
-        remainder = effective_amount - (tickets * min_amount)
-    else:
-        tickets = 0
-        remainder = effective_amount
+    # §7.1 step 4 — boletas are calculated per prize from the total, at
+    # every participation (not just at draw time), so the caller/bot can
+    # report a live headline number.
+    prize_rules = ((rules.get("eligibility") or {}).get("prizes")) or []
+    per_prize = []
+    for p in prize_rules:
+        min_amount = Decimal(str(p.get("min_amount") or 0))
+        max_participations = int(p.get("max_participations") or 0)
+        boletas = _boletas_for(total, min_amount, max_participations)
+        per_prize.append({
+            "prize_order": p.get("prize_order"),
+            "min_amount": float(min_amount),
+            "max_participations": max_participations,
+            "boletas": boletas,
+        })
 
-    # R06 / R06b — the accumulated balance is perpetual and updates whenever
-    # the invoice passed POS + date validation, even if it didn't earn a
-    # ticket (D-002). Invoices that fail R01/R02 never reach this point.
-    if accumulation is not None:
-        accumulation.accumulated_amount = remainder
+    eligible = any(item["boletas"] > 0 for item in per_prize)
+    reason = None if eligible else "invoice_amount_below_minimum"
 
-    eligible = tickets > 0
-    rejection_reason = None if eligible else "invoice_amount_below_minimum"
+    # §7.1 step 6 — headline ticket count: boletas of the lowest-threshold
+    # prize. Informative only; select_winners() recomputes per prize from
+    # the accumulated total and never reads this number.
+    tickets = min(per_prize, key=lambda item: item["min_amount"])["boletas"] if per_prize else 0
 
     rules_applied = {
-        "ticket_mode": ticket_mode,
-        "min_amount": float(min_amount),
+        "mechanic": rules.get("mechanic", "acumulacion"),
+        "accumulated_total": float(total),
         "invoice_amount": float(invoice_amount),
-        "accumulated_before": float(accumulated_before) if accumulated_before is not None else None,
-        "accumulated_after": float(remainder) if ticket_mode == "accumulated" else None,
-        "tickets_earned": tickets,
-        "rejection_reason": rejection_reason,
+        "per_prize": per_prize,
+        "rejection_reason": reason,
     }
 
     return ParticipationResult(
         eligible=eligible,
-        reason=rejection_reason,
+        reason=reason,
         points=0,
         tickets=tickets,
         immediate_winner=False,
@@ -150,32 +169,64 @@ def evaluate_participation(
 
 
 def select_winners(
+    db: Session,
     campaign: Campaign,
-    eligible_participations: list[Participation],
     seed: str,
 ) -> list[WinnerAssignment]:
-    """[D-003/D-006] Random draw WITH replacement — each prize unit is an
-    independent seeded pick over the full ticket pool, and the winner's
-    entries stay in the pool. A single ticket can therefore win more than one
-    prize (R08); reproducing a draw requires the same seed AND the same
-    prize order, since each pick advances the shared RNG state.
+    """[D-003/D-006, §7.2 v0.3] One pool per prize, built from the activity's
+    accumulations. Random draw WITH replacement inside each pool — the
+    winner's boletas stay in the pool, so a participant may win more than one
+    prize (R08). A prize nobody qualifies for is left deserted.
     """
-    pool: list[uuid.UUID] = []
-    for participation in eligible_participations:
-        pool.extend([participation.id] * participation.tickets)
-
-    if not pool:
+    prizes = (
+        db.query(Prize)
+        .filter(Prize.campaign_id == campaign.id)
+        .order_by(Prize.order.desc())
+        .all()
+    )
+    if not prizes:
         return []
 
-    rng = random.Random(seed)
+    rules_by_prize_order = {
+        p.get("prize_order"): p
+        for p in ((campaign.rules or {}).get("eligibility") or {}).get("prizes") or []
+    }
 
-    prizes = (campaign.rules or {}).get("prizes") or []
+    accumulations = (
+        db.query(CampaignParticipantAccumulation)
+        .filter(CampaignParticipantAccumulation.campaign_id == campaign.id)
+        .all()
+    )
+
+    rng = random.Random(seed)
     assignments: list[WinnerAssignment] = []
+
     for prize in prizes:
-        prize_name = prize.get("name")
-        quantity = int(prize.get("quantity", 1))
-        for _ in range(quantity):
+        rule = rules_by_prize_order.get(prize.order)
+        if rule is None:
+            continue  # no eligibility rule configured for this prize order
+
+        min_amount = Decimal(str(rule.get("min_amount") or 0))
+        max_participations = int(rule.get("max_participations") or 0)
+
+        pool: list[uuid.UUID] = []
+        boletas_by_participant: dict[uuid.UUID, int] = {}
+        for accumulation in accumulations:
+            total = accumulation.accumulated_amount or Decimal("0")
+            boletas = _boletas_for(total, min_amount, max_participations)
+            if boletas > 0:
+                pool.extend([accumulation.participant_id] * boletas)
+                boletas_by_participant[accumulation.participant_id] = boletas
+
+        if not pool:
+            continue  # prize deserted — nobody qualifies
+
+        for _ in range(prize.quantity):
             winner_id = rng.choice(pool)
-            assignments.append(WinnerAssignment(participation_id=winner_id, prize_name=prize_name))
+            assignments.append(WinnerAssignment(
+                participant_id=winner_id,
+                prize_name=prize.name,
+                tickets=boletas_by_participant[winner_id],
+            ))
 
     return assignments

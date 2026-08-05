@@ -20,7 +20,7 @@ class ParticipationResponse(BaseModel):
     eligible: bool
     tickets_earned: int
     tickets_total: int
-    accumulated_remaining: Decimal | None = None
+    accumulated_total: Decimal | None = None
     reason: str | None = None
 
 
@@ -54,7 +54,7 @@ class DrawRequest(BaseModel):
 
 
 class WinnerResponse(BaseModel):
-    participation_id: uuid.UUID
+    participant_id: uuid.UUID
     participant_name: str | None
     cedula: str
     tickets: int
