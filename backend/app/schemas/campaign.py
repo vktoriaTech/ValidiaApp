@@ -148,9 +148,9 @@ class CampaignDetailResponse(BaseModel):
     description: str | None
     activity_type: ActivityType | None
     status: CampaignStatus
-    objective_type: str | None
-    objective_label: str | None
-    objective_value: Decimal | None
+    objective_type: str | None = None
+    objective_label: str | None = None
+    objective_value: Decimal | None = None
     budget: Decimal | None
     category: str | None
     brand: str | None
@@ -164,7 +164,7 @@ class CampaignDetailResponse(BaseModel):
     closure_type: str | None
     terms_text: str | None
     terms_version: int
-    rules: dict | None
+    rules: dict | None = None
     qr_code: str | None
     qr_slug: str | None
     qr_url: str | None
