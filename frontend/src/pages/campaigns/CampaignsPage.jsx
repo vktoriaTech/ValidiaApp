@@ -130,6 +130,7 @@ export default function CampaignsPage() {
 
   const [activePOS, setActivePOS] = useState([])
   const [posLoading, setPosLoading] = useState(false)
+  const [posSearch, setPosSearch] = useState('')
   const [wizardBrands, setWizardBrands] = useState([])
   const [brandsLoading, setBrandsLoading] = useState(false)
 
@@ -142,12 +143,10 @@ export default function CampaignsPage() {
   const [detailCampaign, setDetailCampaign] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
-  const [isEditingDetail, setEditingDetail] = useState(false)
-  const [detailEditForm, setDetailEditForm] = useState(null)
-  const [detailEditError, setDetailEditError] = useState('')
-  const [detailSaving, setDetailSaving] = useState(false)
 
-  const firstStep = isSuperAdmin ? 0 : 1
+  const [editingCampaignId, setEditingCampaignId] = useState(null)
+
+  const firstStep = editingCampaignId ? 1 : (isSuperAdmin ? 0 : 1)
 
   useEffect(() => {
     if (!isSuperAdmin) return
@@ -300,7 +299,9 @@ export default function CampaignsPage() {
     setForm(emptyForm())
     setFormError('')
     setActivePOS([])
+    setPosSearch('')
     setWizardClienteSearch('')
+    setEditingCampaignId(null)
 
     if (isSuperAdmin) {
       setWizardTenantId(null)
@@ -314,6 +315,11 @@ export default function CampaignsPage() {
     setModalOpen(true)
   }
 
+  function closeWizard() {
+    setModalOpen(false)
+    setEditingCampaignId(null)
+  }
+
   function selectWizardCliente(cliente) {
     setWizardTenantId(cliente.id)
     setWizardTenantName(cliente.name)
@@ -322,6 +328,11 @@ export default function CampaignsPage() {
   function clearWizardCliente() {
     setWizardTenantId(null)
     setWizardTenantName('')
+  }
+
+  function resolveTenantName(tenantId) {
+    if (!isSuperAdmin) return authTenant?.name || authUser?.tenant_name || ''
+    return clienteDirectory.find((cliente) => cliente.id === tenantId)?.name || ''
   }
 
   async function handleNext() {
@@ -417,7 +428,7 @@ export default function CampaignsPage() {
     setSaving(true)
     try {
       const validPrizes = form.prizes.filter((prize) => prize.name.trim())
-      await createCampaign(wizardTenantId, {
+      const payload = {
         name: form.name,
         description: form.description || null,
         activity_type: form.activity_type,
@@ -438,13 +449,23 @@ export default function CampaignsPage() {
           quantity: Number(prize.quantity) || 1,
           order: Number(prize.order) || 1,
         })),
-      })
-      setModalOpen(false)
+      }
+
+      if (editingCampaignId) {
+        await updateCampaign(wizardTenantId, editingCampaignId, payload)
+      } else {
+        await createCampaign(wizardTenantId, payload)
+      }
+
+      closeWizard()
       setPage(1)
       await refreshCurrentList()
     } catch (err) {
       setFormError(
-        err.response?.data?.detail || 'No fue posible crear la actividad.',
+        err.response?.data?.detail ||
+          (editingCampaignId
+            ? 'No fue posible actualizar la actividad.'
+            : 'No fue posible crear la actividad.'),
       )
     } finally {
       setSaving(false)
@@ -475,7 +496,6 @@ export default function CampaignsPage() {
     const campaignTenantId = campaign.tenant_id || listTenantId
     setDetailTenantId(campaignTenantId)
     setDetailOpen(true)
-    setEditingDetail(false)
     setDetailError('')
     setDetailCampaign(null)
     setDetailLoading(true)
@@ -491,104 +511,72 @@ export default function CampaignsPage() {
 
   function closeDetail() {
     setDetailOpen(false)
-    setEditingDetail(false)
     setDetailCampaign(null)
   }
 
-  function startEditDetail() {
-    const eligibilityPrizes = detailCampaign.rules?.eligibility?.prizes || []
-    const ruleByOrder = Object.fromEntries(eligibilityPrizes.map((rule) => [rule.prize_order, rule]))
-    setDetailEditForm({
-      name: detailCampaign.name || '',
-      description: detailCampaign.description || '',
-      activity_type: detailCampaign.activity_type || 'sorteo',
-      objective_type: detailCampaign.objective_type || '',
-      objective_label: detailCampaign.objective_label || '',
-      objective_value: detailCampaign.objective_value ? String(detailCampaign.objective_value) : '',
-      starts_at: detailCampaign.starts_at
-        ? detailCampaign.starts_at.slice(0, 16)
-        : '',
-      ends_at: detailCampaign.ends_at ? detailCampaign.ends_at.slice(0, 16) : '',
-      closure_type: detailCampaign.closure_type || 'system',
-      terms_text: detailCampaign.terms_text || '',
-      prizeRules: (detailCampaign.prizes || []).map((prize) => ({
-        id: prize.id,
-        name: prize.name,
-        prize_type: prize.prize_type,
-        quantity: prize.quantity,
-        order: prize.order,
-        min_amount: ruleByOrder[prize.order]?.min_amount ?? '',
-        max_participations: ruleByOrder[prize.order]?.max_participations ?? '',
-      })),
-    })
-    setDetailEditError('')
-    setEditingDetail(true)
-  }
+  // Opens the full creation wizard pre-populated with the campaign's current
+  // data, so editing reuses every step (including prizes and POS) instead of
+  // a separate reduced form. Only reachable for draft campaigns (backend
+  // _require_draft enforces this too).
+  async function openEditWizard(campaign) {
+    const tenantId = campaign.tenant_id || detailTenantId
+    setDetailOpen(false)
+    setFormError('')
+    setPosSearch('')
+    setWizardClienteSearch('')
+    setEditingCampaignId(campaign.id)
+    setWizardTenantId(tenantId)
+    setWizardTenantName(resolveTenantName(tenantId))
 
-  function updateDetailPrizeRule(index, field, value) {
-    setDetailEditForm({
-      ...detailEditForm,
-      prizeRules: detailEditForm.prizeRules.map((rule, i) =>
-        i === index ? { ...rule, [field]: value } : rule,
-      ),
-    })
-  }
-
-  async function saveDetailEdit(e) {
-    e.preventDefault()
-    setDetailEditError('')
-    setDetailSaving(true)
+    setBrandsLoading(true)
+    setPosLoading(true)
     try {
-      const rules = {
-        ...(detailCampaign.rules || {}),
-        mechanic: 'acumulacion',
-        date_start: detailEditForm.starts_at ? detailEditForm.starts_at.slice(0, 10) : null,
-        date_end: detailEditForm.ends_at ? detailEditForm.ends_at.slice(0, 10) : null,
-        pos_ids: (detailCampaign.pos || []).map((pos) => pos.id),
-        eligibility: {
-          type: 'threshold_per_prize',
-          prizes: detailEditForm.prizeRules.map((rule) => ({
-            prize_order: rule.order,
-            min_amount: Number(rule.min_amount) || 0,
-            max_participations: Number(rule.max_participations) || 1,
-          })),
-        },
-      }
-      await updateCampaign(detailTenantId, detailCampaign.id, {
-        name: detailEditForm.name,
-        description: detailEditForm.description || null,
-        activity_type: detailEditForm.activity_type,
-        objective_type: detailEditForm.objective_type || null,
-        objective_label: detailEditForm.objective_type === 'otros' ? (detailEditForm.objective_label || null) : null,
-        objective_value: detailEditForm.objective_value ? Number(detailEditForm.objective_value) : null,
-        starts_at: detailEditForm.starts_at
-          ? new Date(detailEditForm.starts_at).toISOString()
-          : null,
-        ends_at: detailEditForm.ends_at
-          ? new Date(detailEditForm.ends_at).toISOString()
-          : null,
-        participation_method: 'acumulacion',
-        closure_type: detailEditForm.closure_type || 'system',
-        terms_text: detailEditForm.terms_text.trim() || null,
-        rules,
-        prizes: detailEditForm.prizeRules.map((rule) => ({
-          name: rule.name,
-          prize_type: rule.prize_type,
-          quantity: rule.quantity,
-          order: rule.order,
-        })),
-      })
-      const refreshed = await getCampaign(detailTenantId, detailCampaign.id)
-      setDetailCampaign(refreshed)
-      setEditingDetail(false)
-      await refreshCurrentList()
-    } catch (err) {
-      setDetailEditError(
-        err.response?.data?.detail || 'No fue posible actualizar la actividad.',
-      )
+      const [brandsData, posData] = await Promise.all([
+        getBrands(tenantId, { is_active: true }),
+        getActivePOS(tenantId),
+      ])
+      setWizardBrands(Array.isArray(brandsData) ? brandsData : (brandsData.items || []))
+      setActivePOS(posData)
+    } catch {
+      setWizardBrands([])
+      setActivePOS([])
     } finally {
-      setDetailSaving(false)
+      setBrandsLoading(false)
+      setPosLoading(false)
     }
+
+    const eligibilityPrizes = campaign.rules?.eligibility?.prizes || []
+    const ruleByOrder = Object.fromEntries(eligibilityPrizes.map((rule) => [rule.prize_order, rule]))
+    const prizes = (campaign.prizes || []).length
+      ? campaign.prizes.map((prize) => ({
+          name: prize.name,
+          prize_type: prize.prize_type,
+          quantity: prize.quantity,
+          order: prize.order,
+          min_amount: ruleByOrder[prize.order]?.min_amount ?? '',
+          max_participations: ruleByOrder[prize.order]?.max_participations ?? '',
+        }))
+      : [{ name: '', prize_type: 'articulo', quantity: 1, order: 1, min_amount: '', max_participations: '' }]
+
+    setForm({
+      name: campaign.name || '',
+      description: campaign.description || '',
+      activity_type: campaign.activity_type || 'sorteo',
+      brand_id: campaign.brand_id || '',
+      objective_type: campaign.objective_type || '',
+      objective_label: campaign.objective_label || '',
+      objective_value: campaign.objective_value ? String(campaign.objective_value) : '',
+      starts_at: campaign.starts_at ? campaign.starts_at.slice(0, 16) : '',
+      ends_at: campaign.ends_at ? campaign.ends_at.slice(0, 16) : '',
+      pos_ids: (campaign.pos || []).map((pos) => pos.id),
+      mechanic: 'acumulacion',
+      closure_type: campaign.closure_type || 'system',
+      prizes,
+      terms_text: campaign.terms_text || '',
+    })
+
+    setStep(1)
+    setModalOpen(true)
   }
 
   const columns = [
@@ -774,8 +762,8 @@ export default function CampaignsPage() {
 
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setModalOpen(false)}
-        title="Nueva actividad"
+        onClose={closeWizard}
+        title={editingCampaignId ? 'Editar actividad' : 'Nueva actividad'}
         maxWidth="max-w-2xl"
         fixedLayout
         stickyHeader={
@@ -811,7 +799,7 @@ export default function CampaignsPage() {
               type="button"
               variant="secondary"
               onClick={() =>
-                step === firstStep ? setModalOpen(false) : setStep(step - 1)
+                step === firstStep ? closeWizard() : setStep(step - 1)
               }
             >
               {step === firstStep ? 'Cancelar' : 'Atrás'}
@@ -822,7 +810,9 @@ export default function CampaignsPage() {
               </Button>
             ) : (
               <Button type="button" disabled={saving} onClick={handleSubmit}>
-                {saving ? 'Creando...' : 'Confirmar y crear'}
+                {saving
+                  ? (editingCampaignId ? 'Guardando...' : 'Creando...')
+                  : (editingCampaignId ? 'Guardar cambios' : 'Confirmar y crear')}
               </Button>
             )}
           </div>
@@ -1142,39 +1132,94 @@ export default function CampaignsPage() {
 
         {step === 3 && (
           <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="campaign-pos"
-                className="text-sm font-medium text-v-night"
-              >
-                Puntos de venta
-              </label>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-v-night">
+                  Puntos de venta
+                </label>
+                <div className="flex items-center gap-3">
+                {form.pos_ids.length > 0 && (
+                  <span className="text-xs text-v-magenta font-medium">
+                    {form.pos_ids.length} seleccionado{form.pos_ids.length > 1 ? 's' : ''}
+                  </span>
+                )}
+                {activePOS.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allSelected = activePOS.every((pos) => form.pos_ids.includes(pos.id))
+                      setForm({
+                        ...form,
+                        pos_ids: allSelected ? [] : activePOS.map((pos) => pos.id),
+                      })
+                    }}
+                    className="text-xs font-medium text-gray-400 hover:text-v-magenta transition-colors"
+                  >
+                    {activePOS.every((pos) => form.pos_ids.includes(pos.id))
+                      ? 'Deseleccionar todos'
+                      : 'Seleccionar todos'}
+                  </button>
+                )}
+              </div>
+              </div>
+
               {posLoading ? (
                 <p className="text-sm text-gray-400">Cargando POS activos...</p>
               ) : (
-                <select
-                  id="campaign-pos"
-                  multiple
-                  value={form.pos_ids}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      pos_ids: Array.from(e.target.selectedOptions, (o) => o.value),
-                    })
-                  }
-                  className="h-36 w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
-                >
-                  {activePOS.map((pos) => (
-                    <option key={pos.id} value={pos.id}>
-                      {pos.name}
-                      {pos.nit_emisor ? ` — ${pos.nit_emisor}` : ''}
-                    </option>
-                  ))}
-                </select>
+                <>
+                  <input
+                    type="text"
+                    placeholder="Buscar punto de venta..."
+                    value={posSearch}
+                    onChange={(e) => setPosSearch(e.target.value)}
+                    className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-v-magenta"
+                  />
+                  <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-lg border border-v-border bg-v-white p-2">
+                    {activePOS
+                      .filter((pos) =>
+                        `${pos.name} ${pos.nit_emisor ?? ''}`
+                          .toLowerCase()
+                          .includes(posSearch.toLowerCase())
+                      )
+                      .map((pos) => {
+                        const selected = form.pos_ids.includes(pos.id)
+                        return (
+                          <label
+                            key={pos.id}
+                            className={`flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
+                              selected ? 'bg-v-magenta/10 text-v-night' : 'hover:bg-v-gray-50 text-v-night'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => {
+                                const ids = selected
+                                  ? form.pos_ids.filter((id) => id !== pos.id)
+                                  : [...form.pos_ids, pos.id]
+                                setForm({ ...form, pos_ids: ids })
+                              }}
+                              className="h-4 w-4 accent-v-magenta"
+                            />
+                            <span className="flex-1 truncate">{pos.name}</span>
+                            {pos.nit_emisor && (
+                              <span className="shrink-0 text-xs text-gray-400">{pos.nit_emisor}</span>
+                            )}
+                          </label>
+                        )
+                      })}
+                    {activePOS.filter((pos) =>
+                      `${pos.name} ${pos.nit_emisor ?? ''}`
+                        .toLowerCase()
+                        .includes(posSearch.toLowerCase())
+                    ).length === 0 && (
+                      <p className="px-3 py-2 text-xs text-gray-400">
+                        No se encontraron puntos de venta.
+                      </p>
+                    )}
+                  </div>
+                </>
               )}
-              <p className="text-xs text-gray-400">
-                Mantén Ctrl/Cmd para seleccionar varios puntos de venta.
-              </p>
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -1390,218 +1435,7 @@ export default function CampaignsPage() {
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
             {detailError}
           </p>
-        ) : !detailCampaign ? null : isEditingDetail ? (
-          <form onSubmit={saveDetailEdit} className="flex flex-col gap-4">
-            <Input
-              id="detail-edit-name"
-              label="Nombre"
-              value={detailEditForm.name}
-              onChange={(e) =>
-                setDetailEditForm({ ...detailEditForm, name: e.target.value })
-              }
-              required
-            />
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="detail-edit-description"
-                className="text-sm font-medium text-v-night"
-              >
-                Descripción
-              </label>
-              <textarea
-                id="detail-edit-description"
-                rows={3}
-                value={detailEditForm.description}
-                onChange={(e) =>
-                  setDetailEditForm({
-                    ...detailEditForm,
-                    description: e.target.value,
-                  })
-                }
-                className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="detail-edit-activity-type"
-                className="text-sm font-medium text-v-night"
-              >
-                Tipo de actividad
-              </label>
-              <select
-                id="detail-edit-activity-type"
-                value={detailEditForm.activity_type}
-                onChange={(e) =>
-                  setDetailEditForm({
-                    ...detailEditForm,
-                    activity_type: e.target.value,
-                  })
-                }
-                className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
-              >
-                {Object.entries(ACTIVITY_TYPE_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input
-                id="detail-edit-starts-at"
-                type="datetime-local"
-                label="Fecha inicio"
-                value={detailEditForm.starts_at}
-                onChange={(e) =>
-                  setDetailEditForm({
-                    ...detailEditForm,
-                    starts_at: e.target.value,
-                  })
-                }
-              />
-              <Input
-                id="detail-edit-ends-at"
-                type="datetime-local"
-                label="Fecha fin"
-                value={detailEditForm.ends_at}
-                onChange={(e) =>
-                  setDetailEditForm({ ...detailEditForm, ends_at: e.target.value })
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-v-night">
-                Mecánica
-              </label>
-              <select
-                value="acumulacion"
-                disabled
-                className="w-full rounded-lg border border-v-border bg-v-gray-50 px-3.5 py-2.5 text-sm text-v-night"
-              >
-                <option value="acumulacion">Acumulación de factura</option>
-              </select>
-              <p className="text-xs text-gray-400">
-                Única mecánica disponible en el MVP.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-v-night">
-                Tipo de cierre
-              </label>
-              <select
-                value={detailEditForm.closure_type}
-                onChange={(e) =>
-                  setDetailEditForm({ ...detailEditForm, closure_type: e.target.value })
-                }
-                className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
-              >
-                <option value="system">Sistema (automático)</option>
-                <option value="external">Externo / notarial (manual)</option>
-              </select>
-              <p className="text-xs text-gray-400">
-                Sistema: Validia ejecuta el sorteo automáticamente. Externo: un
-                notario conduce el sorteo y los ganadores se ingresan manualmente.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              <p className="text-sm font-medium text-v-night">
-                Reglas de participación
-              </p>
-              {detailEditForm.prizeRules.length === 0 ? (
-                <p className="text-xs text-gray-400">
-                  Esta actividad no tiene premios asociados.
-                </p>
-              ) : (
-                detailEditForm.prizeRules.map((rule, index) => {
-                  const multiplePrizes = detailEditForm.prizeRules.length > 1
-                  return (
-                    <div
-                      key={rule.id}
-                      className={
-                        multiplePrizes
-                          ? 'flex flex-col gap-3 rounded-lg border border-v-border p-4'
-                          : 'flex flex-col gap-3'
-                      }
-                    >
-                      {multiplePrizes && (
-                        <span className="text-sm font-medium text-v-night">
-                          {rule.name} (orden {rule.order})
-                        </span>
-                      )}
-                      <div className="grid grid-cols-2 gap-3">
-                        <Input
-                          id={`detail-prize-min-amount-${index}`}
-                          label="Monto mínimo (umbral)"
-                          inputMode="numeric"
-                          value={formatMoneyCO(rule.min_amount)}
-                          onChange={(e) =>
-                            updateDetailPrizeRule(index, 'min_amount', parseMoneyCO(e.target.value))
-                          }
-                        />
-                        <Input
-                          id={`detail-prize-max-participations-${index}`}
-                          type="number"
-                          min="1"
-                          label="Cantidad de participaciones (tope)"
-                          value={rule.max_participations}
-                          onChange={(e) =>
-                            updateDetailPrizeRule(index, 'max_participations', e.target.value)
-                          }
-                        />
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="detail-edit-terms"
-                className="text-sm font-medium text-v-night"
-              >
-                Términos y condiciones
-              </label>
-              <p className="text-xs text-gray-400">
-                Requerido para poder activar la actividad.
-              </p>
-              <textarea
-                id="detail-edit-terms"
-                rows={8}
-                value={detailEditForm.terms_text}
-                onChange={(e) =>
-                  setDetailEditForm({
-                    ...detailEditForm,
-                    terms_text: e.target.value,
-                  })
-                }
-                placeholder="Términos y condiciones de la actividad..."
-                className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-v-magenta"
-              />
-            </div>
-
-            {detailEditError && (
-              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-                {detailEditError}
-              </p>
-            )}
-
-            <div className="mt-2 flex justify-end gap-3">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setEditingDetail(false)}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={detailSaving}>
-                {detailSaving ? 'Guardando...' : 'Guardar cambios'}
-              </Button>
-            </div>
-          </form>
-        ) : (
+        ) : !detailCampaign ? null : (
           <div className="flex flex-col gap-4 text-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -1723,7 +1557,7 @@ export default function CampaignsPage() {
                 Cerrar
               </Button>
               {detailCampaign.status === 'draft' && (
-                <Button type="button" onClick={startEditDetail}>
+                <Button type="button" onClick={() => openEditWizard(detailCampaign)}>
                   Editar actividad
                 </Button>
               )}
