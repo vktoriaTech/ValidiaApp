@@ -164,7 +164,7 @@ class CampaignDetailResponse(BaseModel):
     closure_type: str | None
     terms_text: str | None
     terms_version: int
-    rules: dict | None
+    rules: dict | None = None
     qr_code: str | None
     qr_slug: str | None
     qr_url: str | None
