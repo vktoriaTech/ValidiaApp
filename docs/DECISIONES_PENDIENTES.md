@@ -11,6 +11,39 @@ _(ninguna)_
 
 ## Resueltas
 
+### D-007 · Modelo de reglas del Sorteo — ¿mecánica y reglas separadas? ¿umbral único o por premio?
+**Origen:** revisión del wizard de Sorteo (el motor nunca recibía `rules`) · **Fecha:** 2026-08-05 · **Resuelta:** 2026-08-05
+
+**Contexto:** el wizard nunca escribía `Campaign.rules`, por lo que `evaluate_participation` leía `min_amount = 0` y no generaba boletas: el Sorteo estaba desconectado end-to-end desde la UI. Al revisar el motor real se confirmó, además, que el modelo de "remanente" (`accumulated_amount` guardaba el saldo no convertido en boleta) **solo funciona con un `min_amount` único** — no soporta umbrales distintos por premio.
+
+**Decisión:**
+
+1. **Mecánica y reglas son campos separados.** La *mecánica* describe cómo entra la evidencia; para el MVP la única opción es `"acumulacion"` (acumulación de factura). Se guarda en `Campaign.participation_method`. Las *reglas* describen la elegibilidad y viven en `Campaign.rules` (JSONB).
+
+2. **Umbral por premio.** La elegibilidad se define **por premio**, no global. Cada premio (definido en el Step 2 del wizard) recibe dos valores que llena el cliente:
+   - `min_amount` (umbral): monto mínimo acumulado en facturas válidas para ser elegible a ese premio.
+   - `max_participations` (tope): número máximo de boletas que un mismo participante puede tener en el sorteo de ese premio.
+
+   Boletas de un participante para el premio *p*: `boletas_p = min( floor(acumulado_total / min_amount_p), max_participations_p )` si `acumulado_total >= min_amount_p`, de lo contrario `0`.
+
+   Con `max_participations = 1` el premio se comporta como *gate* (una sola oportunidad); con un tope alto se comporta como *proporcional* (más compra = más boletas, hasta el tope). Un solo campo cubre ambos extremos.
+
+3. **Caso de un solo premio:** la UI muestra un único par de campos (umbral + tope) sin selector de premio. Con más de un premio, cada uno tiene su par de campos asociado. Estructuralmente es el mismo arreglo `eligibility.prizes` con una o varias entradas.
+
+4. **Acumulado total, no remanente.** `CampaignParticipantAccumulation.accumulated_amount` pasa a guardar el **monto total válido acumulado** por participante (suma de todas las facturas que pasaron POS + fecha), no el saldo remanente. Las boletas de cada premio se calculan en el momento del sorteo a partir de ese total. Sin este cambio, umbrales distintos por premio son irrepresentables.
+
+5. **Jerarquía de premios.** Los premios se ordenan explícitamente (campo `Prize.order`, ya existente) de mayor a menor. El `order` define jerarquía/etiqueta; el umbral define elegibilidad — son independientes (no se fuerza "mayor jerarquía = mayor umbral"). El anidamiento sale gratis: si el umbral del premio mayor ≥ el del secundario, quien califica al mayor entra automáticamente al pool del secundario.
+
+**Impacto en specs:**
+- SPEC-04C sube a v0.3. Se redefine `rules` (§5.2), `evaluate_participation` (§7.1) y `select_winners` (§7.2) al modelo por premio.
+- **D-002** (acumulado perpetuo) sigue vigente; solo se refina la semántica: `accumulated_amount` es el total, no el remanente. Sin reinicios.
+- **D-003 / D-006** (sorteo con reposición, multipremio) siguen vigentes, ahora aplicados **por pool de premio**: quien califica a varios premios entra a varios pools; dentro de cada pool, 1 boleta = 1 chance con reposición.
+- Se elimina `ticket_mode` ("single" | "accumulated") del modelo: la mecánica del MVP es siempre acumulación.
+- Bug de schema a corregir: `CampaignCreate.rules` / `CampaignUpdate.rules` están tipados como `list | None` y deben ser `dict | None` (el modelo ORM ya usa `dict`).
+- "Boletas por producto/marca" queda fuera de este alcance: depende de que el CUFE extraiga ítems de producto (ver DT-004).
+
+---
+
 ### D-001 · ¿Un mismo CUFE puede participar en más de una actividad?
 **Origen:** SPEC-04B §5 · **Fecha:** 2026-07-29 · **Resuelta:** 2026-07-30
 
