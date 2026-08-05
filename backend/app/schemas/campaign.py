@@ -73,7 +73,7 @@ class CampaignCreate(BaseModel):
     participation_method: str | None = None
     closure_type: str | None = None
     terms_text: str | None = None
-    rules: list | None = None
+    rules: dict | None = None
     pos_ids: list[uuid.UUID] = []
     prizes: list[PrizeCreate] = []
 
@@ -97,7 +97,7 @@ class CampaignUpdate(BaseModel):
     participation_method: str | None = None
     closure_type: str | None = None
     terms_text: str | None = None
-    rules: list | None = None
+    rules: dict | None = None
     pos_ids: list[uuid.UUID] | None = None
     prizes: list[PrizeCreate] | None = None
 
@@ -164,7 +164,7 @@ class CampaignDetailResponse(BaseModel):
     closure_type: str | None
     terms_text: str | None
     terms_version: int
-    rules: list | None
+    rules: dict | None
     qr_code: str | None
     qr_slug: str | None
     qr_url: str | None

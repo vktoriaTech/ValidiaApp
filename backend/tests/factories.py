@@ -6,10 +6,12 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models.campaign import ActivityType, Campaign, CampaignStatus
+from app.models.campaign_participant_accumulation import CampaignParticipantAccumulation
 from app.models.campaign_terms_acceptance import CampaignTermsAcceptance
 from app.models.invoice import Invoice, ValidationStatus
 from app.models.participant import Participant
 from app.models.participation import Participation
+from app.models.prize import Prize
 from app.models.tenant import Tenant, TenantStatus
 from app.models.user import User, UserRole
 
@@ -132,6 +134,47 @@ def make_participation(
     db.add(participation)
     db.flush()
     return participation
+
+
+def make_prize(db: Session, campaign: Campaign, order: int = 1, quantity: int = 1, **overrides) -> Prize:
+    defaults = dict(
+        campaign_id=campaign.id,
+        tenant_id=campaign.tenant_id,
+        name=f"Premio {order}",
+        prize_type="articulo",
+        quantity=quantity,
+        order=order,
+    )
+    defaults.update(overrides)
+    prize = Prize(**defaults)
+    db.add(prize)
+    db.flush()
+    return prize
+
+
+def make_accumulation(
+    db: Session, campaign: Campaign, participant: Participant, amount
+) -> CampaignParticipantAccumulation:
+    accumulation = CampaignParticipantAccumulation(
+        tenant_id=campaign.tenant_id,
+        campaign_id=campaign.id,
+        participant_id=participant.id,
+        accumulated_amount=Decimal(str(amount)),
+    )
+    db.add(accumulation)
+    db.flush()
+    return accumulation
+
+
+def sorteo_rules(prizes: list[dict], **overrides) -> dict:
+    """Build a SPEC-04C §3.2.6 `rules` dict from a list of per-prize
+    eligibility entries: {prize_order, min_amount, max_participations}."""
+    rules = {
+        "mechanic": "acumulacion",
+        "eligibility": {"type": "threshold_per_prize", "prizes": prizes},
+    }
+    rules.update(overrides)
+    return rules
 
 
 def fake_dian_response(amount, invoice_date: datetime | None = None, pos_nit: str = "900123456") -> dict:

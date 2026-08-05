@@ -223,10 +223,10 @@ def create_participation(
         _audit(db, tenant_id=campaign.tenant_id, user_id=None,
                action="sorteo.participation_ineligible", entity_id=str(campaign.id),
                payload={"participation_id": str(participation.id), "reason": result.reason})
-    if result.rules_applied.get("accumulated_after") is not None:
+    if result.rules_applied.get("accumulated_total") is not None:
         _audit(db, tenant_id=campaign.tenant_id, user_id=None,
                action="sorteo.accumulation_updated", entity_id=str(campaign.id),
-               payload={"participant_id": str(participant.id), "accumulated_after": result.rules_applied.get("accumulated_after")})
+               payload={"participant_id": str(participant.id), "accumulated_total": result.rules_applied.get("accumulated_total")})
 
     db.commit()
     db.refresh(participation)
@@ -236,7 +236,7 @@ def create_participation(
         eligible=result.eligible,
         tickets_earned=result.tickets,
         tickets_total=_tickets_total(db, campaign.id, participant.id),
-        accumulated_remaining=result.rules_applied.get("accumulated_after"),
+        accumulated_total=result.rules_applied.get("accumulated_total"),
         reason=result.reason,
     )
 
@@ -331,17 +331,13 @@ def run_draw(
 def _run_system_draw(db: Session, campaign: Campaign) -> tuple[DrawResponse, str]:
     rule_module = get_rule_module(campaign.activity_type)
 
-    eligible_participations = (
-        db.query(Participation)
-        .filter(Participation.campaign_id == campaign.id, Participation.tickets > 0)
-        .all()
-    )
-    if not eligible_participations:
+    seed = secrets.token_hex(16)
+    # [§7.2 v0.3] select_winners builds its own pools per prize from
+    # CampaignParticipantAccumulation — no precomputed participation list.
+    assignments = rule_module.select_winners(db, campaign, seed)
+    if not assignments:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="no_eligible_participations")
-
-    seed = secrets.token_hex(16)
-    assignments = rule_module.select_winners(campaign, eligible_participations, seed)
 
     winners = _apply_assignments(db, campaign, assignments)
 
@@ -370,18 +366,27 @@ def _register_external_winners(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail="Se requiere la lista de ganadores para cierre externo")
 
-    assignments = [
-        WinnerAssignment(participation_id=w.participation_id, prize_name=w.prize_name)
-        for w in payload.winners
-    ]
-
-    participation_ids = {a.participation_id for a in assignments}
+    # The external-closure admin still identifies winners by participation_id
+    # (the specific invoice submission a notary points to); we resolve each
+    # to its participant to build the same WinnerAssignment contract used by
+    # the system draw (§7.2 v0.3 — the winner is a participant, not an invoice).
+    participation_ids = {w.participation_id for w in payload.winners}
     found = db.query(Participation).filter(
         Participation.id.in_(participation_ids), Participation.campaign_id == campaign.id
     ).all()
     if len(found) != len(participation_ids):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail="Una o más participation_id no existen en esta actividad")
+    participation_by_id = {p.id: p for p in found}
+
+    assignments = [
+        WinnerAssignment(
+            participant_id=participation_by_id[w.participation_id].participant_id,
+            prize_name=w.prize_name,
+            tickets=participation_by_id[w.participation_id].tickets,
+        )
+        for w in payload.winners
+    ]
 
     winners = _apply_assignments(db, campaign, assignments)
 
@@ -403,35 +408,41 @@ def _register_external_winners(
 def _apply_assignments(
     db: Session, campaign: Campaign, assignments: list[WinnerAssignment]
 ) -> list[WinnerResponse]:
-    """Marks Participation.is_winner and folds every prize a participation won
-    into winner_prize (comma-joined — the column is a single string, and R08
-    allows one participation to win more than one prize)."""
-    participation_ids = [a.participation_id for a in assignments]
-    rows = (
-        db.query(Participation, Participant)
-        .join(Participant, Participation.participant_id == Participant.id)
-        .filter(Participation.id.in_(participation_ids))
-        .all()
-    )
-    by_id = {p.id: (p, participant) for p, participant in rows}
+    """[§7.2 v0.3] Winners are participants, not invoices — a participant can
+    qualify for several prizes' pools (R08). Marks every Participation the
+    winning participant has in this activity as is_winner, folding all prizes
+    they won into winner_prize (comma-joined, deduplicated — the column is a
+    single string). Name/cedula are resolved from Participant directly.
+    """
+    participant_ids = {a.participant_id for a in assignments}
+    participants = db.query(Participant).filter(Participant.id.in_(participant_ids)).all()
+    participants_by_id = {p.id: p for p in participants}
 
     won_prizes: dict[uuid.UUID, list[str]] = {}
     for assignment in assignments:
-        won_prizes.setdefault(assignment.participation_id, []).append(assignment.prize_name)
+        prize_names = won_prizes.setdefault(assignment.participant_id, [])
+        if assignment.prize_name not in prize_names:
+            prize_names.append(assignment.prize_name)
 
-    for participation_id, prize_names in won_prizes.items():
-        participation, _ = by_id[participation_id]
+    participations = db.query(Participation).filter(
+        Participation.campaign_id == campaign.id,
+        Participation.participant_id.in_(participant_ids),
+    ).all()
+    for participation in participations:
+        prize_names = won_prizes.get(participation.participant_id)
+        if not prize_names:
+            continue
         participation.is_winner = True
         participation.winner_prize = ", ".join(prize_names)
 
     winners: list[WinnerResponse] = []
     for assignment in assignments:
-        participation, participant = by_id[assignment.participation_id]
+        participant = participants_by_id.get(assignment.participant_id)
         winners.append(WinnerResponse(
-            participation_id=participation.id,
-            participant_name=participant.full_name,
-            cedula=participant.cedula,
-            tickets=participation.tickets,
+            participant_id=assignment.participant_id,
+            participant_name=participant.full_name if participant else None,
+            cedula=participant.cedula if participant else "",
+            tickets=assignment.tickets,
             prize=assignment.prize_name,
         ))
     return winners
