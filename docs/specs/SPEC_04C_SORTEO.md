@@ -651,12 +651,15 @@ frontend/src/pages/campaigns/CampaignsPage.jsx  [MODIFICAR]
    · Step 2 (Premios): input de jerarquía/`order` por premio (mayor→menor); enviar `order` explícito.
    · Step "POS y mecánica" → separar en:
        - Mecánica: <select> con única opción "Acumulación de factura" (value "acumulacion").
+       - Tipo de cierre (`closure_type`): <select> con dos opciones —
+         "Sistema (automático)" (value "system", por defecto) y
+         "Externo / notarial (manual)" (value "external"). Ver §1.5.
        - Reglas de participación: por cada premio del Step 2, un par de campos
          (umbral = monto mínimo, tope = cantidad de participaciones). 1 premio = sin selector.
    · handleSubmit(): construir y enviar `rules` (§3.2.6) con mechanic, date_start/date_end
      (de starts_at/ends_at), pos_ids y eligibility.prizes[{prize_order, min_amount, max_participations}].
-   · Enviar participation_method = "acumulacion".
-   · Detalle/edición: mostrar y permitir editar mecánica + reglas por premio.
+   · Enviar participation_method = "acumulacion" y closure_type (default "system").
+   · Detalle/edición: mostrar y permitir editar mecánica + tipo de cierre + reglas por premio.
 ```
 
 > **Orden de implementación sugerido:** (1) schema fix, (2) `base.py` + `sorteo.py` + orquestador, (3) tests del motor, (4) wizard frontend. El motor es la fuente de verdad; el wizard solo debe producir un `rules` válido.

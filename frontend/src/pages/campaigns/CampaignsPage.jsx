@@ -77,6 +77,7 @@ function emptyForm() {
     ends_at: '',
     pos_ids: [],
     mechanic: 'acumulacion',
+    closure_type: 'system',
     prizes: [
       { name: '', prize_type: 'articulo', quantity: 1, order: 1, min_amount: '', max_participations: '' },
     ],
@@ -427,6 +428,7 @@ export default function CampaignsPage() {
         starts_at: form.starts_at ? new Date(form.starts_at).toISOString() : null,
         ends_at: form.ends_at ? new Date(form.ends_at).toISOString() : null,
         participation_method: 'acumulacion',
+        closure_type: form.closure_type || 'system',
         terms_text: form.terms_text.trim() || null,
         pos_ids: form.pos_ids,
         rules: buildRules(form.prizes, form.pos_ids, form.starts_at, form.ends_at),
@@ -507,6 +509,7 @@ export default function CampaignsPage() {
         ? detailCampaign.starts_at.slice(0, 16)
         : '',
       ends_at: detailCampaign.ends_at ? detailCampaign.ends_at.slice(0, 16) : '',
+      closure_type: detailCampaign.closure_type || 'system',
       terms_text: detailCampaign.terms_text || '',
       prizeRules: (detailCampaign.prizes || []).map((prize) => ({
         id: prize.id,
@@ -565,6 +568,7 @@ export default function CampaignsPage() {
           ? new Date(detailEditForm.ends_at).toISOString()
           : null,
         participation_method: 'acumulacion',
+        closure_type: detailEditForm.closure_type || 'system',
         terms_text: detailEditForm.terms_text.trim() || null,
         rules,
         prizes: detailEditForm.prizeRules.map((rule) => ({
@@ -1154,6 +1158,29 @@ export default function CampaignsPage() {
                 monto de sus facturas válidas.
               </p>
             </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="campaign-closure-type"
+                className="text-sm font-medium text-v-night"
+              >
+                Tipo de cierre
+              </label>
+              <select
+                id="campaign-closure-type"
+                value={form.closure_type}
+                onChange={(e) => setForm({ ...form, closure_type: e.target.value })}
+                className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
+              >
+                <option value="system">Sistema (automático)</option>
+                <option value="external">Externo / notarial (manual)</option>
+              </select>
+              <p className="text-xs text-gray-400">
+                Sistema: Validia ejecuta el sorteo automáticamente. Externo: un
+                notario u otra entidad conduce el sorteo y los ganadores se
+                ingresan manualmente.
+              </p>
+            </div>
           </div>
         )}
 
@@ -1440,6 +1467,26 @@ export default function CampaignsPage() {
               </p>
             </div>
 
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-v-night">
+                Tipo de cierre
+              </label>
+              <select
+                value={detailEditForm.closure_type}
+                onChange={(e) =>
+                  setDetailEditForm({ ...detailEditForm, closure_type: e.target.value })
+                }
+                className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
+              >
+                <option value="system">Sistema (automático)</option>
+                <option value="external">Externo / notarial (manual)</option>
+              </select>
+              <p className="text-xs text-gray-400">
+                Sistema: Validia ejecuta el sorteo automáticamente. Externo: un
+                notario conduce el sorteo y los ganadores se ingresan manualmente.
+              </p>
+            </div>
+
             <div className="flex flex-col gap-3">
               <p className="text-sm font-medium text-v-night">
                 Reglas de participación
@@ -1596,7 +1643,11 @@ export default function CampaignsPage() {
             <div>
               <p className="text-xs text-gray-400">Tipo de cierre</p>
               <p className="mt-1 text-v-night">
-                {detailCampaign.closure_type || '—'}
+                {detailCampaign.closure_type === 'system'
+                  ? 'Sistema (automático)'
+                  : detailCampaign.closure_type === 'external'
+                  ? 'Externo / notarial (manual)'
+                  : '—'}
               </p>
             </div>
 
