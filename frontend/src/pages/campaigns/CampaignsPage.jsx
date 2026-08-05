@@ -777,32 +777,57 @@ export default function CampaignsPage() {
         onClose={() => setModalOpen(false)}
         title="Nueva actividad"
         maxWidth="max-w-2xl"
-      >
-        <div className="mb-6 flex items-center gap-2">
-          {STEPS.map((label, index) => (
-            <div key={label} className="flex flex-1 items-center gap-2">
-              <div
-                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                  index <= step
-                    ? 'bg-v-magenta text-v-white'
-                    : 'bg-v-gray-50 text-gray-400'
-                }`}
-              >
-                {index}
+        fixedLayout
+        stickyHeader={
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {STEPS.map((label, index) => (
+              <div key={label} className="flex shrink-0 items-center gap-2">
+                <div
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                    index <= step
+                      ? 'bg-v-magenta text-v-white'
+                      : 'bg-v-gray-50 text-gray-400'
+                  }`}
+                >
+                  {index}
+                </div>
+                <span
+                  className={`text-xs font-medium ${
+                    index <= step ? 'text-v-night' : 'text-gray-400'
+                  }`}
+                >
+                  {label}
+                </span>
+                {index < STEPS.length - 1 && (
+                  <div className="mx-1 h-px w-6 shrink-0 bg-v-border" />
+                )}
               </div>
-              <span
-                className={`hidden text-xs font-medium sm:block ${
-                  index <= step ? 'text-v-night' : 'text-gray-400'
-                }`}
-              >
-                {label}
-              </span>
-              {index < STEPS.length - 1 && (
-                <div className="h-px flex-1 bg-v-border" />
-              )}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        }
+        footer={
+          <div className="flex justify-between gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() =>
+                step === firstStep ? setModalOpen(false) : setStep(step - 1)
+              }
+            >
+              {step === firstStep ? 'Cancelar' : 'Atrás'}
+            </Button>
+            {step < STEPS.length - 1 ? (
+              <Button type="button" disabled={!canAdvance()} onClick={handleNext}>
+                Siguiente
+              </Button>
+            ) : (
+              <Button type="button" disabled={saving} onClick={handleSubmit}>
+                {saving ? 'Creando...' : 'Confirmar y crear'}
+              </Button>
+            )}
+          </div>
+        }
+      >
 
         {step === 0 && (
           <div className="flex flex-col gap-4">
@@ -1013,61 +1038,64 @@ export default function CampaignsPage() {
         )}
 
         {step === 2 && (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
             {form.prizes.map((prize, index) => {
               const isMoneyPrize = MONEY_PRIZE_TYPES.includes(prize.prize_type)
               return (
                 <div
                   key={index}
-                  className="flex flex-col gap-3 rounded-lg border border-v-border p-4"
+                  className="flex flex-col gap-2 rounded-lg border border-v-border p-3"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-v-night">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                       Premio {index + 1}
                     </span>
                     {form.prizes.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removePrize(index)}
-                        className="text-xs font-medium text-red-500 hover:underline"
+                        className="text-xs font-medium text-red-400 hover:text-red-600"
                       >
                         Eliminar
                       </button>
                     )}
                   </div>
-                  <Input
-                    id={`prize-name-${index}`}
-                    label="Nombre"
-                    value={prize.name}
-                    onChange={(e) => updatePrize(index, 'name', e.target.value)}
-                  />
-                  <Input
-                    id={`prize-order-${index}`}
-                    type="number"
-                    min="1"
-                    label="Orden (jerarquía, mayor a menor)"
-                    value={prize.order}
-                    onChange={(e) => updatePrize(index, 'order', e.target.value)}
-                  />
-                  <div className="grid grid-cols-2 gap-3">
+
+                  {/* Orden + Nombre en una fila */}
+                  <div className="grid grid-cols-4 gap-2">
+                    <Input
+                      id={`prize-order-${index}`}
+                      type="number"
+                      min="1"
+                      label="Orden"
+                      value={prize.order}
+                      onChange={(e) => updatePrize(index, 'order', e.target.value)}
+                    />
+                    <div className="col-span-3">
+                      <Input
+                        id={`prize-name-${index}`}
+                        label="Nombre del premio"
+                        value={prize.name}
+                        onChange={(e) => updatePrize(index, 'name', e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Tipo + Cantidad/Valor + botón agregar en última fila */}
+                  <div className="grid grid-cols-3 gap-2">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-sm font-medium text-v-night">
-                        Tipo
-                      </label>
+                      <label className="text-sm font-medium text-v-night">Tipo</label>
                       <select
                         value={prize.prize_type}
-                        onChange={(e) =>
-                          updatePrize(index, 'prize_type', e.target.value)
-                        }
-                        className="w-full rounded-lg border border-v-border bg-v-white px-3.5 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
+                        onChange={(e) => updatePrize(index, 'prize_type', e.target.value)}
+                        className="w-full rounded-lg border border-v-border bg-v-white px-3 py-2.5 text-sm text-v-night focus:outline-none focus:ring-2 focus:ring-v-magenta"
                       >
                         {Object.entries(PRIZE_TYPE_LABELS).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
+                          <option key={value} value={value}>{label}</option>
                         ))}
                       </select>
                     </div>
+
                     {isMoneyPrize ? (
                       <Input
                         id={`prize-quantity-${index}`}
@@ -1075,9 +1103,7 @@ export default function CampaignsPage() {
                         inputMode="numeric"
                         placeholder="1.000.000"
                         value={formatMoneyCO(prize.quantity)}
-                        onChange={(e) =>
-                          updatePrize(index, 'quantity', parseMoneyCO(e.target.value))
-                        }
+                        onChange={(e) => updatePrize(index, 'quantity', parseMoneyCO(e.target.value))}
                       />
                     ) : (
                       <Input
@@ -1086,18 +1112,31 @@ export default function CampaignsPage() {
                         min="1"
                         label="Cantidad"
                         value={prize.quantity}
-                        onChange={(e) =>
-                          updatePrize(index, 'quantity', e.target.value)
-                        }
+                        onChange={(e) => updatePrize(index, 'quantity', e.target.value)}
                       />
+                    )}
+
+                    {/* Botón agregar solo en el último premio */}
+                    {index === form.prizes.length - 1 ? (
+                      <div className="flex flex-col justify-end">
+                        <button
+                          type="button"
+                          onClick={addPrize}
+                          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-v-magenta px-3 py-2.5 text-sm font-medium text-white hover:bg-v-magenta/90 transition-colors"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Agregar
+                        </button>
+                      </div>
+                    ) : (
+                      <div />
                     )}
                   </div>
                 </div>
               )
             })}
-            <Button type="button" variant="secondary" onClick={addPrize}>
-              Agregar premio
-            </Button>
           </div>
         )}
 
@@ -1337,27 +1376,6 @@ export default function CampaignsPage() {
             {formError}
           </p>
         )}
-
-        <div className="mt-6 flex justify-between gap-3">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() =>
-              step === firstStep ? setModalOpen(false) : setStep(step - 1)
-            }
-          >
-            {step === firstStep ? 'Cancelar' : 'Atrás'}
-          </Button>
-          {step < STEPS.length - 1 ? (
-            <Button type="button" disabled={!canAdvance()} onClick={handleNext}>
-              Siguiente
-            </Button>
-          ) : (
-            <Button type="button" disabled={saving} onClick={handleSubmit}>
-              {saving ? 'Creando...' : 'Confirmar y crear'}
-            </Button>
-          )}
-        </div>
       </Modal>
 
       <Modal

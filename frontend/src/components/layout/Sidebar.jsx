@@ -1,4 +1,5 @@
-import { NavLink } from 'react-router-dom'
+import { useState } from 'react'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 
 const NAV_ITEMS = [
@@ -92,86 +93,139 @@ const ROLE_LABELS = {
   tenant_viewer: 'Visualizador',
 }
 
-export default function Sidebar() {
+export default function Sidebar({ collapsed, onToggle }) {
   const user = useAuthStore((state) => state.user)
   const tenant = useAuthStore((state) => state.tenant)
+  const clearAuth = useAuthStore((state) => state.clearAuth)
+  const navigate = useNavigate()
+  const [confirmLogout, setConfirmLogout] = useState(false)
   const navItems = NAV_ITEMS.filter(
     (item) => !item.superAdminOnly || user?.role === 'super_admin',
   )
 
   return (
-    <aside className="flex h-full w-64 flex-col bg-v-night text-v-white">
-      <div className="flex items-center gap-3 px-6 py-6">
-        <div className="flex h-9 w-9 items-center justify-center">
+    <aside
+      className={`flex h-full flex-col bg-v-night text-v-white transition-all duration-200 ${
+        collapsed ? 'w-16' : 'w-64'
+      }`}
+    >
+      {/* Header: logo + toggle */}
+      <div className={`flex items-center py-6 ${collapsed ? 'justify-center px-0' : 'gap-3 px-6'}`}>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center">
           <svg viewBox="0 0 24 24" className="h-9 w-9">
-            <polygon
-              points="12,1 22,6.5 22,17.5 12,23 2,17.5 2,6.5"
-              fill="#FF0080"
-            />
-            <text
-              x="12"
-              y="16"
-              textAnchor="middle"
-              fontSize="10"
-              fontWeight="800"
-              fill="#FFFFFF"
-              fontFamily="Montserrat, sans-serif"
-            >
+            <polygon points="12,1 22,6.5 22,17.5 12,23 2,17.5 2,6.5" fill="#FF0080" />
+            <text x="12" y="16" textAnchor="middle" fontSize="10" fontWeight="800" fill="#FFFFFF" fontFamily="Montserrat, sans-serif">
               VK
             </text>
           </svg>
         </div>
-        <span className="font-accent text-lg font-extrabold tracking-wide">
-          VKTORIA
-        </span>
+        {!collapsed && (
+          <span className="font-accent text-lg font-extrabold tracking-wide">
+            VKTORIA
+          </span>
+        )}
       </div>
 
-      {tenant && (
+      {/* Toggle button */}
+      <button
+        onClick={onToggle}
+        title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+        className={`mb-3 flex items-center gap-3 rounded-lg py-2 text-white/40 hover:bg-white/5 hover:text-white transition-colors ${
+          collapsed ? 'justify-center px-0 w-full' : 'px-5'
+        }`}
+      >
+        <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+
+      {/* Tenant badge */}
+      {tenant && !collapsed && (
         <div className="mx-6 mb-4 rounded-lg bg-white/5 px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wide text-white/40">
-            Cliente activo
-          </p>
-          <p className="truncate text-sm font-medium text-v-white">
-            {tenant.name}
-          </p>
+          <p className="text-[10px] uppercase tracking-wide text-white/40">Cliente activo</p>
+          <p className="truncate text-sm font-medium text-v-white">{tenant.name}</p>
         </div>
       )}
 
-      <nav className="flex-1 space-y-1 px-3">
+      {/* Nav */}
+      <nav className="flex-1 space-y-1 px-2">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
+            title={collapsed ? item.label : undefined}
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+              `flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors ${
+                collapsed ? 'justify-center px-0' : 'gap-3 px-3'
+              } ${
                 isActive
                   ? 'bg-v-magenta text-v-white'
                   : 'text-white/70 hover:bg-white/5 hover:text-v-white'
               }`
             }
           >
-            <svg
-              className="h-5 w-5 shrink-0"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
+            <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               {item.icon}
               {item.secondaryPath}
             </svg>
-            {item.label}
+            {!collapsed && item.label}
           </NavLink>
         ))}
       </nav>
 
-      <div className="border-t border-white/10 px-6 py-4">
-        <p className="truncate text-sm font-medium text-v-white">
-          {user?.full_name || user?.email || 'Usuario'}
-        </p>
-        <p className="truncate text-xs text-white/40">
-          {ROLE_LABELS[user?.role] || user?.role || '—'}
-        </p>
+      {/* Footer: user info + logout */}
+      <div className={`border-t border-white/10 py-4 ${collapsed ? 'flex flex-col items-center px-0' : 'px-6'}`}>
+        {!collapsed && (
+          <>
+            <p className="truncate text-sm font-medium text-v-white">
+              {user?.full_name || user?.email || 'Usuario'}
+            </p>
+            <p className="truncate text-xs text-white/40">
+              {ROLE_LABELS[user?.role] || user?.role || '—'}
+            </p>
+          </>
+        )}
+
+        <button
+          onClick={() => setConfirmLogout(true)}
+          title="Cerrar sesión"
+          className={`flex items-center gap-2 text-xs text-white/40 hover:text-v-magenta transition-colors ${
+            collapsed ? 'mt-1 justify-center' : 'mt-3'
+          }`}
+        >
+          <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          {!collapsed && 'Cerrar sesión'}
+        </button>
       </div>
+
+      {/* Logout confirm modal */}
+      {confirmLogout && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-80 rounded-xl bg-white p-6 shadow-xl">
+            <p className="text-sm font-semibold text-v-night">¿Cerrar sesión?</p>
+            <p className="mt-1 text-xs text-gray-500">
+              Se cerrará tu sesión actual y serás redirigido al inicio de sesión.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmLogout(false)}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-xs font-medium text-v-night hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { clearAuth(); navigate('/login') }}
+                className="rounded-lg bg-v-magenta px-4 py-2 text-xs font-medium text-white hover:bg-v-magenta/90 transition-colors"
+              >
+                Cerrar sesión
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   )
 }
