@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import Sidebar from './Sidebar'
@@ -22,6 +23,7 @@ function getPageTitle(pathname) {
 export default function Shell() {
   const token = useAuthStore((state) => state.token)
   const location = useLocation()
+  const [collapsed, setCollapsed] = useState(false)
 
   if (!token) {
     return <Navigate to="/login" replace />
@@ -29,7 +31,7 @@ export default function Shell() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-v-gray-50">
-      <Sidebar />
+      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex items-center justify-between border-b border-v-border bg-v-white px-8 py-4">
           <h1 className="text-xl font-semibold text-v-night">
