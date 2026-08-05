@@ -1,12 +1,18 @@
 # SPEC-04C: Actividad tipo Sorteo
 **Proyecto:** Validia MVP
-**Versión:** 0.2
+**Versión:** 0.3
 **Estado:** Borrador
-**Última actualización:** 2026-07-30
+**Última actualización:** 2026-08-05
 **Depende de:** SPEC-04A (Campañas/Actividades), SPEC-04B (Motor de Participación)
 **Precede a:** implementación de `backend/app/services/rules/sorteo.py`
 
-> **Estado de decisiones:** todas las preguntas de negocio de este spec están resueltas (D-001, D-002, D-003, D-004 — ver `docs/DECISIONES_PENDIENTES.md`). Este spec no tiene asunciones temporales abiertas. Listo para implementación.
+> **Estado de decisiones:** todas las preguntas de negocio de este spec están resueltas (D-001, D-002, D-003, D-004, D-007 — ver `docs/DECISIONES_PENDIENTES.md`). Este spec no tiene asunciones temporales abiertas. Listo para implementación.
+
+> **⚠️ v0.3 — cambio de modelo (D-007, autoritativo).** Esta versión reemplaza el modelo de **umbral único** (`min_amount` global + `ticket_mode`) por un modelo de **umbral por premio**. La sección **§3.2** es autoritativa y prevalece sobre cualquier referencia a `min_amount` global, `ticket_mode` o "remanente" que aparezca más abajo en sus formas originales (§1.2, §1.3, §5.2 y §7 fueron actualizadas; el resto del texto se conserva como contexto histórico). Cambios de fondo:
+> 1. **Mecánica ≠ reglas.** Mecánica = `"acumulacion"` (única del MVP), en `participation_method`. Reglas de elegibilidad en `rules` (JSONB).
+> 2. **Elegibilidad por premio.** Cada premio tiene `min_amount` (umbral) y `max_participations` (tope de boletas por participante).
+> 3. **Acumulado total, no remanente.** `accumulated_amount` guarda el total válido acumulado; las boletas por premio se calculan al sortear.
+> 4. Se elimina `ticket_mode`. Se corrige el schema `rules: list` → `rules: dict`.
 
 ---
 
@@ -20,16 +26,13 @@ El consumidor no sabe de antemano si ganó — ese es el diferenciador frente a 
 
 ### 1.2 Boleta
 
-La unidad de participación en un Sorteo. Cada boleta representa un derecho a ser seleccionada en el sorteo. Un participante puede acumular múltiples boletas durante la vigencia de la actividad. Las boletas se generan por monto de compra: una boleta por cada `min_amount` pesos acumulados en facturas válidas.
+La unidad de participación en un Sorteo. Cada boleta representa un derecho a ser seleccionada. **[v0.3]** Las boletas se calculan **por premio** a partir del monto total acumulado: para el premio *p*, `boletas_p = min(floor(acumulado_total / umbral_p), tope_p)` — ver §3.2. Un participante puede tener distinta cantidad de boletas en cada premio, o cero si no alcanza el umbral de ese premio.
 
-Ejemplo: `min_amount = $100.000`. Ana compra $250.000 en una sola factura → recibe 2 boletas (le sobran $50.000 que siguen acumulando hacia la siguiente).
+Ejemplo: premio con umbral $100.000 y tope 5. Ana acumula $250.000 → 2 boletas para ese premio.
 
-### 1.3 Factura acumulada vs. factura única
+### 1.3 Acumulación de factura (mecánica única del MVP)
 
-- **Factura única:** cada factura individual debe superar el `min_amount` por sí sola para generar boleta(s). Una factura de $60.000 con `min_amount = $100.000` no genera boleta y el monto no se lleva al siguiente registro.
-- **Factura acumulada:** las facturas se suman hasta alcanzar el `min_amount`. El remanente se acumula para la siguiente(s) factura(s).
-
-El wizard permite configurar cuál de los dos modos aplica (`ticket_mode`). Este spec soporta ambos.
+**[v0.3]** La mecánica del MVP es siempre **acumulación**: las facturas válidas (POS + fecha correctos) suman al **acumulado total** del participante durante toda la vigencia. Ese total es la única base para calcular boletas al momento del sorteo. Se elimina la distinción `ticket_mode` "single/accumulated" de la v0.2 y el concepto de "remanente": ya no se guarda saldo residual sino el total. Ver §3.2.5.
 
 ### 1.4 Mecánica vs. reglas (recordatorio de SPEC-04B §1)
 
@@ -98,7 +101,84 @@ Si `rules.pos_ids` está vacío, se aceptan todos los POS del tenant (no se filt
 
 ---
 
+## 3.2 Modelo de reglas por premio (v0.3 — AUTORITATIVO)
+
+Esta sección define el modelo vigente de mecánica y reglas. Prevalece sobre toda referencia previa a `min_amount` global, `ticket_mode` o "saldo remanente".
+
+### 3.2.1 Mecánica vs. reglas (separadas)
+
+- **Mecánica** — cómo cuenta la evidencia. MVP: única opción `"acumulacion"` (acumulación de factura). Se persiste en `Campaign.participation_method` (`String(50)`) con el valor `"acumulacion"`. El wizard la presenta como un selector con una sola opción habilitada ("Acumulación de factura").
+- **Reglas** — qué condiciones hacen elegible al participante. Viven en `Campaign.rules` (JSONB) y se definen **por premio**.
+
+### 3.2.2 Umbral y tope por premio
+
+Cada premio creado en el Step 2 del wizard recibe dos valores que llena el cliente:
+
+| Campo | Significado |
+|---|---|
+| `min_amount` (umbral) | Monto mínimo **acumulado** en facturas válidas para que el participante sea elegible a ese premio. |
+| `max_participations` (tope) | Número máximo de boletas que un mismo participante puede tener en el sorteo de ese premio. |
+
+**Boletas de un participante para el premio *p*:**
+
+```
+si acumulado_total >= min_amount_p:
+    boletas_p = min( floor(acumulado_total / min_amount_p), max_participations_p )
+si no:
+    boletas_p = 0
+```
+
+- `max_participations_p = 1` → el premio se comporta como *gate*: una sola oportunidad al superar el umbral, sin importar cuánto más compre.
+- `max_participations_p` alto → *proporcional*: más compra = más boletas, con techo en el tope.
+
+### 3.2.3 Un premio vs. varios premios (UI)
+
+- **Un solo premio:** la UI muestra un único par de campos (umbral + tope), sin selector de premio.
+- **Varios premios:** cada premio (identificado por su jerarquía/`order`) tiene su propio par de campos. Un participante puede quedar elegible a unos premios y a otros no, según su acumulado.
+
+Ambos casos se persisten con la misma estructura (`eligibility.prizes` con una o varias entradas).
+
+### 3.2.4 Jerarquía de premios (`Prize.order`)
+
+Los premios se ordenan **explícitamente** de mayor a menor con el campo `Prize.order` (ya existe en el modelo y el schema; hoy el wizard lo asigna por índice de creación). El Step 2 debe permitir al cliente fijar el orden (input numérico o reordenamiento), de modo que la jerarquía no dependa del orden de creación.
+
+`order` (jerarquía/etiqueta) y `min_amount` (umbral) son **independientes**: el sistema no obliga a que el premio de mayor jerarquía tenga el mayor umbral. El anidamiento natural ocurre solo si el cliente así lo configura (umbral del mayor ≥ umbral del secundario ⇒ quien califica al mayor entra también al pool del secundario).
+
+### 3.2.5 Acumulado total (no remanente)
+
+`CampaignParticipantAccumulation.accumulated_amount` guarda el **monto total válido acumulado** por participante durante toda la vigencia (suma de todas las facturas que pasaron POS + fecha), **no** el saldo remanente. Es perpetuo, sin reinicios (D-002). Las boletas por premio se calculan a partir de este total en el momento del sorteo — nunca por factura, porque con umbrales distintos por premio el remanente no es representable.
+
+### 3.2.6 Estructura de `rules` (autoritativa)
+
+```json
+{
+  "mechanic": "acumulacion",
+  "date_start": "2026-08-01",
+  "date_end": "2026-10-31",
+  "pos_ids": ["uuid1", "uuid2"],
+  "eligibility": {
+    "type": "threshold_per_prize",
+    "prizes": [
+      { "prize_order": 1, "min_amount": 500000, "max_participations": 3 },
+      { "prize_order": 2, "min_amount": 200000, "max_participations": 5 }
+    ]
+  }
+}
+```
+
+- `eligibility.prizes[i].prize_order` referencia `Prize.order`. La identidad del premio (nombre, tipo, cantidad de unidades a entregar) vive en la tabla `prizes`; `rules` solo agrega los números de la regla.
+- `date_start`/`date_end` y `pos_ids` los escribe el wizard reflejando `starts_at`/`ends_at` y los POS seleccionados. (La duplicación de fechas con las columnas `Campaign.starts_at/ends_at` se acepta como deuda menor; unificar a futuro.)
+- El wizard **debe** escribir este objeto en `Campaign.rules` al crear/editar la actividad. Que no lo escribiera era la causa de que el motor recibiera `rules = null` y no generara boletas.
+
+### 3.2.7 Fix de schema
+
+`CampaignCreate.rules` y `CampaignUpdate.rules` en `backend/app/schemas/campaign.py` están tipados como `list | None` y deben ser **`dict | None`** (el modelo ORM `Campaign.rules` ya es `dict`). `CampaignDetailResponse.rules` igual: `dict | None`.
+
+---
+
 ## 4. Flujo end-to-end (Sorteo)
+
+> **[v0.3]** El diagrama de abajo conserva la narrativa general, pero los pasos 7–10 (cálculo de boletas con `min_amount` único y remanente) quedan **reemplazados** por el modelo por premio de §3.2 y §7.1: se suma la factura al acumulado total y las boletas se calculan por premio al sortear. Ante diferencias, mandan §3.2 / §7.
 
 ```
 Consumidor compra en POS participante
@@ -186,28 +266,29 @@ CREATE TABLE campaign_participant_accumulations (
 CREATE INDEX idx_camp_part_accum_campaign ON campaign_participant_accumulations(campaign_id);
 ```
 
-> Si `ticket_mode = "single"` esta tabla no se usa — pero existe sin problema.
+> **[v0.3]** Esta tabla es siempre necesaria: la mecánica única (acumulación) requiere el acumulado total por participante. `accumulated_amount` guarda el **total válido acumulado** (no el remanente).
 
-### 5.2 Columnas nuevas en `Campaign.rules` (JSONB — no requiere migración de columna)
+### 5.2 Contenido de `Campaign.rules` (JSONB — no requiere migración de columna)
 
-El JSONB `rules` ya existe. El Sorteo espera encontrar estas claves dentro de él al evaluar una participación:
+> **v0.3:** la estructura autoritativa está en **§3.2.6**. El bloque de abajo queda como referencia rápida; ante cualquier diferencia, manda §3.2.6.
 
 ```json
 {
-  "ticket_mode":   "single" | "accumulated",
-  "min_amount":    100000,
-  "date_start":    "2026-08-01",
-  "date_end":      "2026-10-31",
-  "pos_ids":       ["uuid1", "uuid2"],          // vacío = todos los POS del tenant
-  "prizes": [
-    { "name": "Carro",        "quantity": 1 },
-    { "name": "Remodelación", "quantity": 1 },
-    { "name": "MasterClass",  "quantity": 3 }
-  ]
+  "mechanic": "acumulacion",
+  "date_start": "2026-08-01",
+  "date_end":   "2026-10-31",
+  "pos_ids":    ["uuid1", "uuid2"],            // vacío = todos los POS del tenant
+  "eligibility": {
+    "type": "threshold_per_prize",
+    "prizes": [
+      { "prize_order": 1, "min_amount": 500000, "max_participations": 3 },
+      { "prize_order": 2, "min_amount": 200000, "max_participations": 5 }
+    ]
+  }
 }
 ```
 
-> El wizard ya guarda `min_amount`, fechas y POS. Falta agregar `ticket_mode` y `prizes` al paso del wizard (cambio de frontend, fuera del alcance de este spec — se documenta como deuda técnica del wizard).
+> El wizard **debe** escribir este objeto en `Campaign.rules`. La identidad de cada premio (nombre, tipo, unidades) sigue en la tabla `prizes`; `rules.eligibility.prizes` referencia por `prize_order` = `Prize.order`.
 
 ### 5.3 Campo `draw_seed` en `Campaign`
 
@@ -333,16 +414,54 @@ POST /api/v1/tenants/{tenant_id}/campaigns/{campaign_id}/draw
 | 400 | Sorteo ya ejecutado (idempotencia — devuelve resultado anterior) |
 | 422 | `closure_type == "external"` y body vacío o `participation_id` no existe |
 
+### 6.3 Consulta de estado del participante — contador de boletas (v0.3)
+
+Un participante puede consultar en cualquier momento cuántas boletas (oportunidades) lleva en el sorteo — el equivalente digital a preguntar "¿cuántas tirillas he depositado en el buzón?".
+
+**Principio de diseño: el contador es DERIVADO, no persistido.** La única fuente de verdad es `CampaignParticipantAccumulation.accumulated_amount` (monto total válido acumulado). No se guarda un contador de boletas por separado — se calcula al vuelo, evitando cualquier desincronización entre "acumulado" y "boletas". Como las reglas quedan congeladas al activar la actividad, la derivación es estable y reproducible.
+
+Para cada premio *p*:
+```
+boletas_p           = min( floor(total / umbral_p), tope_p )   si total >= umbral_p, si no 0
+remanente_p         = total mod umbral_p                        # monto ya avanzado hacia la próxima boleta
+falta_siguiente_p   = umbral_p - remanente_p                    # cuánto más comprar para otra boleta (si no topó)
+```
+
+- **Un solo premio** → un único número (analogía exacta del buzón del supermercado).
+- **Varios premios** → un desglose por premio (un "buzón" por premio, cada uno con su propio precio-por-boleta).
+
+**Endpoint (participante/bot — `public_router`). Estado: contemplado, implementación futura (H9).**
+
+```
+GET /api/v1/campaigns/{campaign_id}/participants/status?cedula={cedula}
+```
+
+**Response 200:**
+```json
+{
+  "accumulated_total": 250000,
+  "prizes": [
+    { "prize_order": 1, "prize_name": "Carro",   "min_amount": 500000, "max_participations": 3, "boletas": 0, "falta_para_siguiente": 250000 },
+    { "prize_order": 2, "prize_name": "Mercado",  "min_amount": 200000, "max_participations": 5, "boletas": 1, "falta_para_siguiente": 150000 }
+  ]
+}
+```
+
+> Este spec deja definido **el dato y la forma de la respuesta**. El disparo desde WhatsApp (el participante le pregunta al bot "¿cuántas boletas tengo?") es parte del flujo del participante (H9) y se cablea cuando se aborde ese spec. Ver DT-005.
+
 ---
 
 ## 7. Contratos e interfaces (implementación de SPEC-04B §7)
 
-### 7.1 `evaluate_participation` — implementación Sorteo
+> **v0.3 — autoritativo.** Las firmas y la lógica de abajo reemplazan a las de la v0.2. Modelo por premio, acumulado total, boletas calculadas al sortear.
+
+### 7.1 `evaluate_participation` — implementación Sorteo (v0.3)
 
 ```python
 # backend/app/services/rules/sorteo.py
 
 def evaluate_participation(
+    db: Session,
     campaign: Campaign,
     invoice: Invoice,
     participant: Participant,
@@ -350,49 +469,74 @@ def evaluate_participation(
     extra: dict,   # no usado en Sorteo
 ) -> ParticipationResult:
     """
-    1. Verifica que invoice.invoice_date esté en [rules.date_start, rules.date_end].
-    2. Verifica POS elegible: invoice.pos_nit coincide con el nit_emisor de algún POS
-       cuyo id esté en rules.pos_ids (si la lista no está vacía). Ver §3.1.
-    3. Según ticket_mode:
-       - "single":      monto_efectivo = invoice.amount
-       - "accumulated": monto_efectivo = accumulated_amount_anterior + invoice.amount
-    4. tickets = floor(monto_efectivo / rules.min_amount)
-    5. nuevo_saldo = monto_efectivo % rules.min_amount
-    6. Actualiza CampaignParticipantAccumulation.accumulated_amount = nuevo_saldo (perpetuo, toda la vigencia)
-    7. eligible = tickets > 0
-    8. Devuelve ParticipationResult con:
-       - eligible, tickets, points=0, immediate_winner=False
-       - rules_applied = {ticket_mode, min_amount, invoice_total, accumulated_before,
-                          accumulated_after, tickets_earned, rejection_reason}
+    1. Rechazo duro por fecha: si invoice.invoice_date no está en [rules.date_start, rules.date_end]
+       → HTTPException 422 reason="invoice_date_out_of_range". No acumula. (D-005: auditar antes de propagar.)
+    2. Rechazo duro por POS: invoice.pos_nit debe coincidir con el nit_emisor de algún POS de rules.pos_ids
+       (si la lista no está vacía; ver §3.1) → HTTPException 422 reason="pos_not_eligible". No acumula. (D-005.)
+    3. Acumulación (mecánica única = acumulacion):
+       accum = get_or_create_accumulation(...)
+       accum.accumulated_amount = (accum.accumulated_amount or 0) + (invoice.amount or 0)   # TOTAL, no remanente
+       total = accum.accumulated_amount
+    4. Calcular boletas por premio a partir de rules.eligibility.prizes:
+       for p in prizes:
+           umbral = p["min_amount"]; tope = p["max_participations"]
+           boletas_p = min(floor(total / umbral), tope) if (umbral > 0 and total >= umbral) else 0
+    5. eligible = any(boletas_p > 0)   # elegible a al menos un premio
+       reason = None if eligible else "invoice_amount_below_minimum"
+    6. Devuelve ParticipationResult con:
+       - eligible, points=0, immediate_winner=False
+       - tickets = suma informativa de boletas del premio de menor umbral (headline para el bot);
+         el sorteo NO usa este número — recomputa por premio desde el acumulado (§7.2).
+       - rules_applied = {
+             "mechanic": "acumulacion",
+             "accumulated_total": float(total),
+             "invoice_amount": float(invoice.amount or 0),
+             "per_prize": [ {"prize_order": .., "min_amount": .., "max_participations": .., "boletas": ..}, ... ],
+             "rejection_reason": reason,
+         }
     """
 ```
 
-### 7.2 `select_winners` — implementación Sorteo
+> **Nota de contrato.** La factura sigue registrándose como `Participation` (dedup por CUFE R03, trazabilidad, `eligible`/`reason`). La fuente de verdad para el sorteo es `CampaignParticipantAccumulation.accumulated_amount`, no `Participation.tickets`.
+
+### 7.2 `select_winners` — implementación Sorteo (v0.3)
 
 ```python
 def select_winners(
+    db: Session,
     campaign: Campaign,
-    eligible_participations: list[Participation],
+    seed: str,
 ) -> list[WinnerAssignment]:
     """
-    [ASUNCIÓN D-003] Algoritmo: aleatorio simple, sin repetición de participante.
+    [D-003 / D-006] Aleatorio simple con reposición, POR POOL DE PREMIO.
 
-    1. Construir pool: por cada Participation, añadir su participation_id
-       tantas veces como tickets tenga.
-    2. Cargar lista de premios desde campaign.rules["prizes"] en orden
-       (de mayor a menor valor, si se especifica; si no, en el orden del JSON).
-    3. Generar semilla reproducible: seed = secrets.token_hex(16); guardarla en
-       campaign.rules["draw_result"]["seed"].
-    4. random.seed(seed); random.shuffle(pool)
-    5. Para cada premio y cada unidad del premio:
-       a. Seleccionar pool[0] → ganador
-       b. Las entradas del ganador permanecen en el pool (puede ganar premios posteriores)
-       c. Registrar WinnerAssignment(participation_id, prize_name)
-    6. Devolver lista de WinnerAssignment.
-    Nota: si el cliente quiere restricción "un ganador, un premio", debe declararlo en sus T&C.
-    La herramienta no lo hace cumplir automáticamente.
+    1. Cargar premios de la tabla `prizes` (campaign_id) ordenados por `order` (mayor→menor).
+    2. Cargar rules.eligibility.prizes indexado por prize_order → (min_amount, max_participations).
+    3. Cargar todas las CampaignParticipantAccumulation de la actividad (una por participante).
+    4. rng = random.Random(seed)   # semilla guardada en rules["draw_result"]["seed"] para reproducibilidad
+    5. Para cada premio p (en orden):
+         umbral, tope = regla por p.order
+         pool_p = []
+         for accum in accumulations:
+             total = accum.accumulated_amount or 0
+             boletas = min(floor(total / umbral), tope) if (umbral > 0 and total >= umbral) else 0
+             pool_p.extend([accum.participant_id] * boletas)
+         if not pool_p:            # nadie califica a este premio
+             continue              # premio queda desierto (registrar en draw_result)
+         for _ in range(p.quantity):        # unidades del premio
+             winner = rng.choice(pool_p)    # CON reposición: las boletas del ganador permanecen
+             assignments.append(WinnerAssignment(participant_id=winner, prize_name=p.name))
+    6. Devolver assignments.
+
+    Nota: cada premio se sortea sobre SU propio pool. Un participante que califica a varios
+    premios entra a varios pools (puede ganar más de uno; R08). La restricción "un ganador,
+    un premio" es responsabilidad de los T&C del cliente, no de la herramienta.
     """
 ```
+
+> **Cambios de contrato respecto a v0.2:**
+> - `WinnerAssignment` pasa a llevar `participant_id` (el ganador es un participante, no una factura). El endpoint de ganadores resuelve nombre/cédula desde `Participant`. Ajustar `base.py`.
+> - `select_winners` recibe `db` y `seed` (ya no `eligible_participations`); construye los pools desde las acumulaciones. El orquestador de SPEC-04B debe adaptarse a la nueva firma.
 
 ---
 
@@ -406,15 +550,16 @@ Las condiciones que este spec decide (las abiertas están marcadas):
 | R02 | Si `rules.pos_ids` no está vacío, la factura debe pertenecer a uno de esos POS | Definido |
 | R03 | El mismo CUFE no puede registrarse dos veces en la misma actividad (409) | Definido |
 | R04 | Una participación no elegible se guarda igual, con `eligible=false` y `reason` — no se descarta | Definido (heredado de 04B) |
-| R05 | `ticket_mode = "single"`: cada factura se evalúa individualmente; sin acumulado entre facturas | Definido |
-| R06 | `ticket_mode = "accumulated"`: el saldo se lleva de una factura a la siguiente durante toda la vigencia de la actividad. No hay ventanas ni reinicios. | ✅ Confirmado (D-002, 2026-07-30) |
-| R06b | El saldo **sí acumula** si la factura pasa validación de POS y fecha, aunque no alcance el mínimo (`eligible=false`, pero `accumulated_amount` sube). Si la factura falla POS o fecha, el monto **no acumula** en ningún caso. | ✅ Confirmado (2026-07-30) |
-| R07 | El sorteo por sistema usa aleatorio simple: 1 boleta = 1 chance, sin ponderación adicional | ✅ Confirmado (D-003, 2026-07-30) |
-| R08 | Un participante puede ganar más de un premio en el mismo sorteo. Sus boletas permanecen en el pool tras cada ganador. La restricción "un ganador, un premio" es responsabilidad de los T&C de cada cliente. | ✅ Confirmado (D-003, 2026-07-30) |
-| R09 | `ticket_mode = "by_points"` (boletas por puntos/marcas de producto) no está en alcance del MVP | Definido — fuera de alcance |
+| R05 | **[v0.3]** Mecánica única del MVP = acumulación. Se elimina `ticket_mode`. La elegibilidad se evalúa **por premio** con `min_amount` (umbral) y `max_participations` (tope) — ver §3.2. | ✅ Confirmado (D-007, 2026-08-05) |
+| R06 | **[v0.3]** El **acumulado total** por participante es perpetuo durante toda la vigencia (`accumulated_amount` = total válido, no remanente). Sin ventanas ni reinicios. Las boletas por premio se calculan al sortear. | ✅ Confirmado (D-002 refinado + D-007) |
+| R06b | El monto **sí acumula** si la factura pasa validación de POS y fecha, aunque el total aún no alcance ningún umbral (`eligible=false`, pero `accumulated_amount` sube). Si la factura falla POS o fecha, el monto **no acumula** en ningún caso (rechazo duro, 422, auditado — D-005). | ✅ Confirmado (D-005) |
+| R07 | **[v0.3]** Dentro del pool de cada premio, el sorteo es aleatorio simple: 1 boleta = 1 chance. Boletas de un participante para el premio *p* = `min(floor(total / umbral_p), tope_p)`. | ✅ Confirmado (D-003 + D-007) |
+| R08 | Un participante puede ganar más de un premio: si califica a varios premios, entra a varios pools; dentro de cada pool sus boletas permanecen tras cada ganador (con reposición, D-006). La restricción "un ganador, un premio" es responsabilidad de los T&C del cliente. | ✅ Confirmado (D-003 / D-006) |
+| R09 | Reglas "por producto/marca" no están en alcance del MVP — dependen de que el CUFE extraiga ítems de producto (DT-004). | Definido — fuera de alcance |
 | R10 | Mecánicas Formulario y Asistencia devuelven 501 en `/participations`; solo Factura es funcional en MVP. Las demás mecánicas se abordan en fases futuras. | ✅ Confirmado (D-004, 2026-07-30) |
 | R11 | El cierre externo no corre ningún algoritmo; el admin es responsable de la validez de los ganadores que ingresa | Definido |
 | R12 | `/draw` es idempotente: si ya tiene ganadores registrados, devuelve el resultado anterior sin re-sortear | Definido |
+| R13 | **[v0.3]** El contador de boletas del participante es **derivado** de `accumulated_amount` (no se persiste por separado). Con un premio es un número; con varios, un desglose por premio (§6.3). | ✅ Confirmado (D-007) |
 
 ---
 
@@ -481,6 +626,41 @@ alembic/versions/
 └── XXXX_create_campaign_participant_accumulations.py  [NUEVA MIGRACIÓN]
 ```
 
+### 10.1 Archivos adicionales del rediseño v0.3 (D-007)
+
+```
+backend/app/
+├── schemas/campaign.py                         [MODIFICAR]
+│   · CampaignCreate.rules:  list | None  →  dict | None
+│   · CampaignUpdate.rules:  list | None  →  dict | None
+│   · CampaignDetailResponse.rules: list | None → dict | None
+│   · PrizeCreate: mantener `order` (ya existe) — el wizard debe enviarlo explícito
+│
+├── services/rules/base.py                      [MODIFICAR]
+│   · WinnerAssignment: participation_id → participant_id
+│
+├── services/rules/sorteo.py                    [MODIFICAR]
+│   · evaluate_participation(): acumulado TOTAL + boletas por premio (§7.1 v0.3)
+│   · select_winners(db, campaign, seed): pools por premio desde acumulaciones (§7.2 v0.3)
+│
+└── services/participation_service.py           [MODIFICAR]
+    · Adaptar la llamada a select_winners a la nueva firma (db, campaign, seed)
+    · Resolver ganadores por participant_id (nombre/cédula desde Participant)
+
+frontend/src/pages/campaigns/CampaignsPage.jsx  [MODIFICAR]
+   · Step 2 (Premios): input de jerarquía/`order` por premio (mayor→menor); enviar `order` explícito.
+   · Step "POS y mecánica" → separar en:
+       - Mecánica: <select> con única opción "Acumulación de factura" (value "acumulacion").
+       - Reglas de participación: por cada premio del Step 2, un par de campos
+         (umbral = monto mínimo, tope = cantidad de participaciones). 1 premio = sin selector.
+   · handleSubmit(): construir y enviar `rules` (§3.2.6) con mechanic, date_start/date_end
+     (de starts_at/ends_at), pos_ids y eligibility.prizes[{prize_order, min_amount, max_participations}].
+   · Enviar participation_method = "acumulacion".
+   · Detalle/edición: mostrar y permitir editar mecánica + reglas por premio.
+```
+
+> **Orden de implementación sugerido:** (1) schema fix, (2) `base.py` + `sorteo.py` + orquestador, (3) tests del motor, (4) wizard frontend. El motor es la fuente de verdad; el wizard solo debe producir un `rules` válido.
+
 ---
 
 ## 11. Migración de BD
@@ -507,10 +687,13 @@ La migración debe crear la tabla `campaign_participant_accumulations` tal como 
 | T02 | CUFE inválido (DIAN rechaza) | 422, sin `Participation` |
 | T03 | Factura con fecha fuera del periodo | 422 con `reason = "invoice_date_out_of_range"` |
 | T04 | Factura de POS que no está en la lista | 422 con `reason = "pos_not_eligible"` |
-| T05 | `ticket_mode=single`, factura $80K, `min_amount=$100K` | `eligible=false`, `tickets_earned=0` |
-| T06 | `ticket_mode=single`, factura $250K, `min_amount=$100K` | `eligible=true`, `tickets_earned=2` |
-| T07 | `ticket_mode=accumulated`, 1ra factura $60K (`min=$100K`) | `eligible=false`, `accumulated=60000` |
-| T08 | `ticket_mode=accumulated`, 2da factura $70K (saldo $60K) | `eligible=true`, `tickets_earned=1`, `accumulated=30000` |
+| T05 | 1 premio (umbral $100K, tope 5), 1ra factura $80K | `eligible=false`, `accumulated_total=80000`, boletas premio=0 |
+| T06 | 1 premio (umbral $100K, tope 5), factura acumula a $250K | `eligible=true`, `accumulated_total=250000`, boletas premio=2 |
+| T05b | Premio con tope=1 (gate), acumulado $500K, umbral $100K | boletas premio = 1 (topado, no 5) |
+| T07 | 1 premio (umbral $100K), 1ra factura $60K | `eligible=false`, `accumulated_total=60000` |
+| T08 | 1 premio (umbral $100K), 2da factura $70K (total $130K) | `eligible=true`, `accumulated_total=130000`, boletas premio=1 |
+| T08b | 2 premios: P1(umbral $500K, tope 3), P2(umbral $200K, tope 5); acumulado $300K | elegible solo a P2; boletas P1=0, P2=1 |
+| T08c | Rechazo duro por POS/fecha | 422 + audit_log `participation_rejected`; `accumulated_total` NO cambia (D-005) |
 | T09 | CUFE duplicado en la misma actividad | 409 |
 | T10 | TyC no aceptados | 400 con `reason = "terms_not_accepted"` |
 | T11 | `/draw` con actividad en estado `active` (no cerrada) | 400 |
