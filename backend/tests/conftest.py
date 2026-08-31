@@ -12,6 +12,8 @@ the tables automatically):
     docker exec validia-db psql -U validia_user -d postgres \
         -c "CREATE DATABASE validia_test OWNER validia_user;"
 """
+import os
+
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -19,7 +21,13 @@ from sqlalchemy.orm import sessionmaker
 import app.models  # noqa: F401 — registers all models on Base.metadata
 from app.models.base import Base
 
-TEST_DATABASE_URL = "postgresql://validia_user:ValidiaDB2026!@localhost:5433/validia_test"
+# Default targets the host-exposed Postgres (docker-compose maps validia-db to
+# localhost:5433). Override with TEST_DATABASE_URL when running inside the
+# backend container, where the DB is reachable as db:5432.
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql://validia_user:ValidiaDB2026!@localhost:5433/validia_test",
+)
 
 engine = create_engine(TEST_DATABASE_URL)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

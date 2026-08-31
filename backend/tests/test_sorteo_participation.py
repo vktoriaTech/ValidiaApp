@@ -165,10 +165,10 @@ def test_t08c_pos_hard_reject_is_audited_and_not_persisted(db, monkeypatch):
 
     monkeypatch.setattr(
         cufe_service, "validate_cufe",
-        lambda cufe, tenant_id: fake_dian_response(amount=150000, pos_nit="999999999"),
+        lambda cufe, nit_emisor, tenant_id: fake_dian_response(amount=150000, pos_nit="999999999"),
     )
 
-    payload = ParticipationCreate(cufe="CUFE-T08C-POS", cedula="3000000000", channel="whatsapp")
+    payload = ParticipationCreate(cufe="CUFE-T08C-POS", nit_emisor="900000000", cedula="3000000000", channel="whatsapp")
 
     with pytest.raises(HTTPException) as exc_info:
         participation_service.create_participation(db, campaign.id, payload)
@@ -215,10 +215,10 @@ def test_t08c_date_hard_reject_is_audited_and_amount_does_not_accumulate(db, mon
     out_of_range_date = datetime(2026, 3, 1, tzinfo=timezone.utc)
     monkeypatch.setattr(
         cufe_service, "validate_cufe",
-        lambda cufe, tenant_id: fake_dian_response(amount=150000, invoice_date=out_of_range_date),
+        lambda cufe, nit_emisor, tenant_id: fake_dian_response(amount=150000, invoice_date=out_of_range_date),
     )
 
-    payload = ParticipationCreate(cufe="CUFE-T08C-DATE", cedula="3000000001", channel="whatsapp")
+    payload = ParticipationCreate(cufe="CUFE-T08C-DATE", nit_emisor="900000000", cedula="3000000001", channel="whatsapp")
 
     with pytest.raises(HTTPException) as exc_info:
         participation_service.create_participation(db, campaign.id, payload)
@@ -256,10 +256,10 @@ def test_t09_duplicate_cufe_in_same_campaign_is_rejected(db, monkeypatch):
 
     monkeypatch.setattr(
         cufe_service, "validate_cufe",
-        lambda cufe, tenant_id: fake_dian_response(amount=150000),
+        lambda cufe, nit_emisor, tenant_id: fake_dian_response(amount=150000),
     )
 
-    payload = ParticipationCreate(cufe="CUFE-DUP-1", cedula="1111111111", channel="whatsapp")
+    payload = ParticipationCreate(cufe="CUFE-DUP-1", nit_emisor="900000000", cedula="1111111111", channel="whatsapp")
 
     first = participation_service.create_participation(db, campaign.id, payload)
     assert first.eligible is True

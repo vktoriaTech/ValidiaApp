@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 class ParticipationCreate(BaseModel):
     cufe: str
+    nit_emisor: str
     cedula: str
     phone_wa: str | None = None
     full_name: str | None = None
