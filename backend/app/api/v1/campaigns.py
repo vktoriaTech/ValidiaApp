@@ -25,6 +25,7 @@ from app.schemas.campaign import (
     PrizeCreate,
     PrizeResponse,
     PrizeUpdate,
+    PublicCampaignResponse,
     QRResponse,
     ResultCreate,
     ResultResponse,
@@ -42,6 +43,14 @@ router = APIRouter(prefix="/tenants", tags=["campaigns"])
 # que el bot de participantes (H9) pueda registrar la aceptación de TyC sin
 # tener una sesión de admin. Ver nota de seguridad en campaign_service.accept_campaign_terms.
 public_router = APIRouter(prefix="/campaigns", tags=["campaigns-public"])
+
+
+@public_router.get("/{campaign_id}/public", response_model=PublicCampaignResponse)
+def get_public_campaign(
+    campaign_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> PublicCampaignResponse:
+    return campaign_service.get_public_campaign(db, campaign_id)
 
 
 @public_router.post("/{campaign_id}/terms/accept", response_model=TermsAcceptResponse, status_code=status.HTTP_201_CREATED)

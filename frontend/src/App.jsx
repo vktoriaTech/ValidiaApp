@@ -10,12 +10,17 @@ import POSPage from './pages/pos/POSPage'
 import UsersPage from './pages/users/UsersPage'
 import ConfiguracionPage from './pages/configuracion/ConfiguracionPage'
 import ProfilePage from './pages/profile/ProfilePage'
+import ParticiparPage from './pages/participar/ParticiparPage'
 
 export default function App() {
   const token = useAuthStore((state) => state.token)
 
   return (
     <Routes>
+      {/* Ruta pública de participación (sin autenticación) — la usa el
+          participante externo con su factura. */}
+      <Route path="/participar/:campaignId" element={<ParticiparPage />} />
+
       <Route
         path="/login"
         element={token ? <Navigate to="/dashboard" replace /> : <LoginPage />}

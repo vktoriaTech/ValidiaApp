@@ -49,6 +49,7 @@ from app.schemas.campaign import (
     QRResponse,
     ResultCreate,
     ResultResponse,
+    PublicCampaignResponse,
     TermsAcceptCreate,
     TermsAcceptResponse,
     VendorCreate,
@@ -833,6 +834,21 @@ def create_result(
 
 
 # ── Terms & conditions acceptance ───────────────────────────────────────────────
+
+def get_public_campaign(db: Session, campaign_id: uuid.UUID) -> PublicCampaignResponse:
+    """Datos públicos de una actividad para la página de participación (sin
+    auth). Solo expone nombre, estado, tipo y términos — nada sensible."""
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if campaign is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Actividad no encontrada")
+    return PublicCampaignResponse(
+        id=campaign.id,
+        name=campaign.name,
+        status=campaign.status.value if campaign.status else "draft",
+        activity_type=campaign.activity_type.value if campaign.activity_type else None,
+        terms_text=campaign.terms_text,
+    )
+
 
 def accept_campaign_terms(
     db: Session, campaign_id: uuid.UUID, payload: TermsAcceptCreate

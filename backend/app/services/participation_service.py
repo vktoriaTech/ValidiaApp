@@ -22,7 +22,7 @@ from app.schemas.participation import (
     ParticipationResponse,
     WinnerResponse,
 )
-from app.services import cufe_service
+from app.services import cufe_service, ocr_service
 from app.services.rules import get_rule_module
 from app.services.rules.base import WinnerAssignment
 
@@ -145,6 +145,41 @@ def _is_eligible(participation: Participation) -> bool:
 # ══════════════════════════════════════════════════════════════════════════════
 # Register participation (public — participant/bot)
 # ══════════════════════════════════════════════════════════════════════════════
+
+def create_participation_from_images(
+    db: Session,
+    campaign_id: uuid.UUID,
+    images: list[bytes],
+    cedula: str,
+    full_name: str | None = None,
+    phone_wa: str | None = None,
+    channel: str = "web",
+) -> ParticipationResponse:
+    """Flujo reutilizable (web hoy, bot de WhatsApp después): recibe la(s)
+    foto(s) de la factura + la cédula, extrae CUFE y NIT por OCR y participa.
+    El front (web o WhatsApp) es una cáscara delgada sobre esta función: no
+    hay corrección manual de campos — si el OCR no logra leer, se pide reenviar
+    una foto más nítida."""
+    fields = ocr_service.extract_invoice_fields(images)
+    cufe = (fields.get("cufe") or "").replace(" ", "")
+    nit_emisor = (fields.get("nit_emisor") or "").strip()
+
+    if len(cufe) != 96 or not nit_emisor:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No pudimos leer el CUFE o el NIT de la factura. Reenvía una foto más nítida donde se vean ambos.",
+        )
+
+    payload = ParticipationCreate(
+        cufe=cufe,
+        nit_emisor=nit_emisor,
+        cedula=cedula,
+        full_name=full_name,
+        phone_wa=phone_wa,
+        channel=channel,
+    )
+    return create_participation(db, campaign_id, payload)
+
 
 def create_participation(
     db: Session, campaign_id: uuid.UUID, payload: ParticipationCreate
