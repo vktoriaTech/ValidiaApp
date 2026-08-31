@@ -127,6 +127,7 @@ export default function CampaignsPage() {
   const [saving, setSaving] = useState(false)
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
   const [confirmCampaign, setConfirmCampaign] = useState(null)
+  const [activationMissing, setActivationMissing] = useState([])
 
   const [activePOS, setActivePOS] = useState([])
   const [posLoading, setPosLoading] = useState(false)
@@ -472,8 +473,23 @@ export default function CampaignsPage() {
     }
   }
 
-  function requestActivate(campaign) {
-    setConfirmCampaign(campaign)
+  async function requestActivate(campaign) {
+    const campaignTenantId = campaign.tenant_id || listTenantId
+    try {
+      const detail = await getCampaign(campaignTenantId, campaign.id)
+      const missing = []
+      if (!detail.starts_at || !detail.ends_at) missing.push('Fechas de inicio y fin de la actividad')
+      if (!detail.prizes || detail.prizes.length === 0) missing.push('Al menos 1 premio')
+      if (!detail.pos || detail.pos.length === 0) missing.push('Al menos 1 punto de venta')
+      if (!detail.terms_text || !detail.terms_text.trim()) missing.push('Términos y condiciones')
+      if (missing.length > 0) {
+        setActivationMissing(missing)
+      } else {
+        setConfirmCampaign(campaign)
+      }
+    } catch {
+      setError('No fue posible verificar la actividad.')
+    }
   }
 
   async function confirmActivate() {
@@ -484,8 +500,9 @@ export default function CampaignsPage() {
     try {
       await updateCampaignStatus(campaignTenantId, campaign.id, { status: 'active' })
       await refreshCurrentList()
-    } catch {
-      setError('No fue posible activar la actividad.')
+    } catch (err) {
+      const msg = err?.response?.data?.detail
+      setError(msg || 'No fue posible activar la actividad.')
     } finally {
       setStatusUpdatingId(null)
       setConfirmCampaign(null)
@@ -1570,11 +1587,37 @@ export default function CampaignsPage() {
         <ConfirmModal
           isOpen={Boolean(confirmCampaign)}
           title="Confirmar acción"
-          message={`¿Estás seguro de que deseas activar a ${confirmCampaign.name}? Esta acción puede afectar el acceso al sistema.`}
+          message={`¿Estás seguro de que deseas activar "${confirmCampaign.name}"? Una vez activa, los participantes podrán registrarse.`}
           onCancel={() => setConfirmCampaign(null)}
           onConfirm={confirmActivate}
           confirming={statusUpdatingId === confirmCampaign.id}
         />
+      )}
+
+      {activationMissing.length > 0 && (
+        <Modal
+          isOpen={activationMissing.length > 0}
+          onClose={() => setActivationMissing([])}
+          title="Requisitos para activar"
+          maxWidth="max-w-sm"
+        >
+          <p className="mb-4 text-sm text-gray-500">
+            Completa los siguientes campos antes de poder activar la actividad:
+          </p>
+          <ul className="space-y-2 mb-6">
+            {activationMissing.map((item) => (
+              <li key={item} className="flex items-center gap-2 text-sm text-red-600">
+                <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                {item}
+              </li>
+            ))}
+          </ul>
+          <div className="flex justify-end">
+            <Button onClick={() => setActivationMissing([])}>Entendido</Button>
+          </div>
+        </Modal>
       )}
     </div>
   )
