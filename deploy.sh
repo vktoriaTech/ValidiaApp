@@ -10,7 +10,7 @@ echo "=== Pulling latest code ==="
 ssh -i $SSH_KEY $EC2_USER@$EC2_HOST "cd ~/ValidiaApp && git pull origin main"
 
 echo "=== Building images ==="
-ssh -i $SSH_KEY $EC2_USER@$EC2_HOST "cd ~/ValidiaApp && docker compose build --build-arg VITE_API_URL=https://api.veradia.io
+ssh -i $SSH_KEY $EC2_USER@$EC2_HOST "cd ~/ValidiaApp && docker compose build --build-arg VITE_API_URL=$VITE_API_URL"
 
 echo "=== Restarting services ==="
 ssh -i $SSH_KEY $EC2_USER@$EC2_HOST "cd ~/ValidiaApp && docker compose up -d"
