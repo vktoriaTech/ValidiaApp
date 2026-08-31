@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, File, Form, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
@@ -21,6 +21,29 @@ public_router = APIRouter(prefix="/campaigns", tags=["participations-public"])
 
 # Admin, authenticated, tenant-scoped.
 router = APIRouter(prefix="/tenants", tags=["participations"])
+
+
+@public_router.post(
+    "/{campaign_id}/participate-by-image",
+    response_model=ParticipationResponse,
+)
+async def participate_by_image(
+    campaign_id: uuid.UUID,
+    response: Response,
+    cedula: str = Form(...),
+    full_name: str | None = Form(None),
+    phone_wa: str | None = Form(None),
+    channel: str = Form("web"),
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+) -> ParticipationResponse:
+    # Flujo reutilizable web/WhatsApp: foto(s) + cédula → OCR → validar → participar.
+    images = [await f.read() for f in files]
+    result = participation_service.create_participation_from_images(
+        db, campaign_id, images, cedula, full_name, phone_wa, channel
+    )
+    response.status_code = status.HTTP_201_CREATED if result.eligible else status.HTTP_200_OK
+    return result
 
 
 @public_router.post(

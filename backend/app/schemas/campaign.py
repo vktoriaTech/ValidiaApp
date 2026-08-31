@@ -324,5 +324,17 @@ class TermsAcceptResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PublicCampaignResponse(BaseModel):
+    """Datos mínimos de una actividad para la página pública de participación
+    (sin autenticación): nombre, estado y términos a aceptar."""
+    id: uuid.UUID
+    name: str
+    status: str
+    activity_type: str | None = None
+    terms_text: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # Forward refs
 CampaignDetailResponse.model_rebuild()
