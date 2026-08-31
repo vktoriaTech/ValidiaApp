@@ -23,4 +23,4 @@ def validar_cufe(
             detail="tenant_id es requerido",
         )
 
-    return cufe_service.validate_and_store(db, tenant_id, payload.cufe, current_user)
+    return cufe_service.validate_and_store(db, tenant_id, payload.cufe, payload.nit_emisor, current_user)

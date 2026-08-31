@@ -65,7 +65,7 @@ def extract_invoice_fields(result: dict) -> dict:
     }
 
 
-def validate_and_store(db: Session, tenant_id: uuid.UUID, cufe: str, current_user: User) -> dict:
+def validate_and_store(db: Session, tenant_id: uuid.UUID, cufe: str, nit_emisor: str, current_user: User) -> dict:
     _check_access(current_user)
 
     if len(cufe) != _CUFE_LENGTH:
@@ -74,7 +74,14 @@ def validate_and_store(db: Session, tenant_id: uuid.UUID, cufe: str, current_use
             detail=f"El CUFE debe tener {_CUFE_LENGTH} caracteres",
         )
 
-    result = validate_cufe(cufe, str(tenant_id))
+    nit_emisor = (nit_emisor or "").strip()
+    if not nit_emisor:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El NIT del emisor es obligatorio",
+        )
+
+    result = validate_cufe(cufe, nit_emisor, str(tenant_id))
 
     invoice_id: uuid.UUID | None = None
     if result.get("estado_dian") == "Valida":
@@ -106,14 +113,14 @@ def validate_and_store(db: Session, tenant_id: uuid.UUID, cufe: str, current_use
     return {**result, "invoice_id": invoice_id}
 
 
-def validate_cufe(cufe: str, tenant_id: str) -> dict:
+def validate_cufe(cufe: str, nit_emisor: str, tenant_id: str) -> dict:
     url = f"{settings.CUFE_SERVICE_URL.rstrip('/')}/api/v1/cufe/validar"
     headers = {"X-API-Key": settings.CUFE_SERVICE_API_KEY}
 
     try:
         response = httpx.post(
             url,
-            json={"cufe": cufe, "tenant_id": tenant_id},
+            json={"cufe": cufe, "nit_emisor": nit_emisor, "tenant_id": tenant_id},
             headers=headers,
             timeout=_TIMEOUT,
         )

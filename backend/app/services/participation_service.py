@@ -94,7 +94,7 @@ def _get_or_create_participant(
     return participant
 
 
-def _get_or_create_invoice(db: Session, tenant_id: uuid.UUID, cufe: str) -> Invoice:
+def _get_or_create_invoice(db: Session, tenant_id: uuid.UUID, cufe: str, nit_emisor: str) -> Invoice:
     existing = db.query(Invoice).filter(
         Invoice.tenant_id == tenant_id,
         Invoice.cufe == cufe,
@@ -103,7 +103,7 @@ def _get_or_create_invoice(db: Session, tenant_id: uuid.UUID, cufe: str) -> Invo
     if existing is not None:
         return existing
 
-    result = cufe_service.validate_cufe(cufe, str(tenant_id))
+    result = cufe_service.validate_cufe(cufe, nit_emisor, str(tenant_id))
     if result.get("estado_dian") != "Valida":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -169,7 +169,7 @@ def create_participation(
     if acceptance is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="terms_not_accepted")
 
-    invoice = _get_or_create_invoice(db, campaign.tenant_id, payload.cufe)
+    invoice = _get_or_create_invoice(db, campaign.tenant_id, payload.cufe, payload.nit_emisor)
 
     duplicate = (
         db.query(Participation)
