@@ -11,6 +11,25 @@ _(ninguna)_
 
 ## Resueltas
 
+### D-008 · Captura de la factura — ¿QR, OCR o librería? ¿cuántos datos pide al usuario? ¿flujo web vs WhatsApp?
+**Origen:** construcción del flujo del participante (demo Cosmocentro) · **Fecha:** 2026-08-31 · **Resuelta:** 2026-08-31
+
+**Contexto:** el deber ser del producto es un **agente de WhatsApp** que recibe la foto de la factura y participa al usuario sin intervención humana. Para el demo se hace por un **sitio web**, pero se exigió que solo cambie el front — el backend debe ser el mismo y reutilizable. Surgieron tres preguntas.
+
+**Decisiones:**
+
+1. **Extracción por OCR, no por QR.** El QR impreso en la factura física no expone el CUFE de forma pública/útil; el único QR con datos estructurados (CUFE + NIT) vive *dentro del PDF que genera el portal DIAN*, que solo se obtiene **después** de validar — es circular. Por eso el CUFE y el NIT del emisor se extraen por **OCR del texto plano** de una o dos fotos de la factura. Se usa **AWS Textract** (`DetectDocumentText`, ~$0.0015/foto) por precisión sobre fotos reales; alternativas self-hosted (Tesseract/PaddleOCR) se reevaluarán solo si el volumen lo justifica. El OCR es un paso *delgado*: solo saca CUFE + NIT; el resto (monto, fecha, ítems) lo trae el scraper de la DIAN.
+
+2. **Flujo automático, un solo endpoint reutilizable.** `POST /campaigns/{id}/participate-by-image` recibe `foto(s) + cédula` y hace internamente OCR → validar DIAN → participar → devuelve el resultado. Web (hoy) y el bot de WhatsApp (después) llaman el **mismo** endpoint; el front es una cáscara delgada. **No hay corrección manual de campos**: si el OCR no logra leer un CUFE de 96 caracteres o el NIT, se responde "reenvía una foto más nítida" (comportamiento idéntico en web y WhatsApp).
+
+3. **Solo se pide la cédula.** El nombre y el celular no vienen confiables en la factura (compras de consumidor suelen decir "consumidor final", y el teléfono no está); en WhatsApp el celular es el canal y el nombre sale del perfil. Por eso el front mínimo pide **solo la cédula**; nombre/celular quedan opcionales. La aceptación de T&C se registra una vez con un check junto a la cédula (en WhatsApp, un "acepto" por texto) llamando a `POST /campaigns/{id}/terms/accept`.
+
+**Cambios externos de la DIAN detectados y resueltos (2026-08-31):** el portal DIAN ahora (a) **exige el NIT del emisor** en el formulario de búsqueda (`input#SearchDocumentNit`) además del CUFE, y (b) **entrega el PDF encriptado** con el NIT del emisor como contraseña de apertura. El microservicio CUFE (repo Web-Scraping) se adaptó para ambos; el backend de Validia propaga el `nit_emisor` de punta a punta. Detalle en SPEC-04B-A.
+
+**Impacto en specs:** nuevo SPEC-04B-A (captura de CUFE por OCR). SPEC-04B §6.1 gana el endpoint `participate-by-image` como capa de captura sobre `create_participation`. Pendientes de negocio derivados registrados como DT-006 y DT-007.
+
+---
+
 ### D-007 · Modelo de reglas del Sorteo — ¿mecánica y reglas separadas? ¿umbral único o por premio?
 **Origen:** revisión del wizard de Sorteo (el motor nunca recibía `rules`) · **Fecha:** 2026-08-05 · **Resuelta:** 2026-08-05
 
