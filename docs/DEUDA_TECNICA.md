@@ -26,6 +26,12 @@ Un sprint dedicado después de cerrar los specs de los 4 tipos de actividad (04C
 - GitHub Actions free tier: 2,000 min/mes para repos privados. Estimado Validia: ~140 min/mes (CI ~2 min/PR + CD ~5 min/merge). Sin costo adicional.
 - Los casos de prueba (T01–Tn) ya están documentados en cada spec — solo hay que traducirlos a funciones pytest.
 
+**Actualización 2026-08-31 (avance parcial):**
+- **Tests:** ya existe `backend/tests/test_sorteo_participation.py` (12 casos T05–T14 del Sorteo, en verde). `conftest.py` lee `TEST_DATABASE_URL` del entorno para correr dentro del contenedor (`db:5432`).
+- **Deploy:** existe `deploy.sh` (pull + build + up + `alembic upgrade head` vía SSH al EC2) — CD **manual**, no automático.
+- **Infra:** la app corre en EC2 con dominio `veradia.io` + HTTPS (Let's Encrypt); el microservicio CUFE quedó dockerizado (`cufe-service`, `docker-compose.yml` en repo Web-Scraping) en la red compartida `validiaapp_validia-net`.
+- **Falta:** GitHub Actions (CI en cada PR + CD automático al mergear), y tests para specs 01–04B y para el flujo de captura (SPEC-04B-A).
+
 ---
 
 ## DT-002 · Wizard frontend — reglas de participación en el wizard ✅ ABSORBIDO
@@ -71,6 +77,47 @@ Al abrir el spec del flujo del participante (H9). El endpoint read-only es de ba
 
 ---
 
+## DT-006 · Persistencia en S3 del PDF de la DIAN y de la imagen enviada (post-demo)
+
+**Qué es:**
+Hoy ni la **foto del participante** ni el **PDF oficial de la DIAN** se persisten de forma durable:
+- La foto se procesa en memoria (OCR) y se descarta.
+- El PDF de la DIAN se guarda dentro del contenedor `cufe-service`, en una carpeta efímera (`pdfs/…`) que se pierde en cada redeploy.
+
+**Acción requerida:**
+1. Subir a S3 (`validia-evidencias`, ya en config) **ambos** artefactos, llaveados por CUFE + campaña + cédula:
+   - `pdf_s3_key`: el PDF oficial de la DIAN (documento autoritativo).
+   - `image_s3_key`: la(s) foto(s) que envió el participante (la columna `Invoice.image_s3_key` ya existe; falta `pdf_s3_key`).
+2. Agregar permiso `s3:PutObject` a la política IAM del usuario `validia-ocr` (hoy solo tiene `textract:DetectDocumentText`).
+
+**Por qué ambos:**
+- El **PDF** es el activo autoritativo (datos completos, valor legal) — hoy en riesgo de perderse.
+- La **imagen** es la prueba de envío del participante (hora + cédula) — valor antifraude/disputa de ganador, distinto del PDF.
+
+**Por qué se aplazó:** decisión de Bryan (2026-08-31) — no meter S3 en la ruta crítica del demo. Es post-demo.
+
+**Prioridad:** Media-alta. El PDF efímero es un hueco real; conviene asegurarlo pronto tras el demo.
+
+---
+
+## DT-007 · Extracción completa de la factura a BD, llaveada por cédula (activo de negocio)
+
+**Qué es:**
+El scraper de la DIAN ya devuelve la factura completa (emisor, receptor, ítems/productos, montos, fechas), pero el backend **solo usa** `amount`, `invoice_date` y `pos_nit` para participar y **descarta el resto**. Esa data — qué compra cada cédula, dónde, cuándo, qué productos — es **data pura y parte del modelo de negocio** (perfilamiento de consumo, insights para marcas/CC).
+
+**Acción requerida:**
+1. Persistir el `raw_data` completo de cada factura validada (JSONB) y/o normalizarlo en tablas (`invoice_items`, etc.).
+2. Asociarlo firmemente a la **cédula del participante** (ya tenemos `Participant.cedula` ↔ `Invoice` vía `Participation`).
+3. Definir el modelo de explotación/consulta de esa data (para el negocio, no solo para el sorteo).
+
+**Relación con DT-004:** DT-004 es el subconjunto "ítems de producto para reglas por marca/producto". DT-007 es más amplio: conservar **toda** la data de la factura como activo, independientemente de las reglas del sorteo.
+
+**Por qué se aplazó:** el sorteo por monto (D-007) no la necesita. Pero es prioridad de negocio, no solo técnica.
+
+**Cuándo abordarlo:** definir con los socios el alcance del producto de datos; técnicamente se adelanta junto con DT-006 (cuando se persista el PDF, se persiste también su data estructurada).
+
+---
+
 ## DT-003 · Token de GitHub embebido en la URL del remote (seguridad)
 
 **Qué es:**
@@ -84,7 +131,9 @@ El remote `origin` tiene el Personal Access Token embebido en la URL (`https://u
 **Por qué se aplazó:**
 Decisión de Bryan (2026-07-31) — se atiende cuando se revise todo el registro de deuda técnica.
 
+**Actualización 2026-08-31:** el problema es más amplio. El repo **Web-Scraping** tenía su propio token embebido (`ghp_beKD…`) que resultó **inválido/revocado** al intentar hacer push; como workaround se reusó el token de ValidiaApp en el remote de Web-Scraping para destrabar el despliegue del microservicio CUFE. Ahora **ambos repos** tienen el mismo token de escritura embebido en sus URLs de git. La rotación debe cubrir los dos remotes y migrar a Keychain/SSH.
+
 **Prioridad:**
-Alta (seguridad). Es una credencial de escritura al repo; conviene rotarla antes que los ítems de tooling. Mientras el token siga embebido, seguirá apareciendo en cada salida de git.
+Alta (seguridad). Es una credencial de escritura a los repos; conviene rotarla antes que los ítems de tooling. Mientras el token siga embebido, seguirá apareciendo en cada salida de git.
 
 ---
