@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
@@ -9,6 +9,7 @@ from app.models.user import User
 from app.schemas.participation import (
     DrawRequest,
     DrawResponse,
+    PaginatedParticipations,
     ParticipationCreate,
     ParticipationListItem,
     ParticipationResponse,
@@ -67,16 +68,38 @@ def create_participation(
 
 @router.get(
     "/{tenant_id}/campaigns/{campaign_id}/participations",
-    response_model=list[ParticipationListItem],
+    response_model=PaginatedParticipations,
 )
 def list_participations(
     tenant_id: uuid.UUID,
     campaign_id: uuid.UUID,
-    eligible: bool | None = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    search: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> list[ParticipationListItem]:
-    return participation_service.list_participations(db, tenant_id, campaign_id, current_user, eligible)
+) -> PaginatedParticipations:
+    return participation_service.list_participations_paginated(
+        db, tenant_id, campaign_id, current_user, page, limit, search
+    )
+
+
+@router.get("/{tenant_id}/campaigns/{campaign_id}/participations/export")
+def export_participations(
+    tenant_id: uuid.UUID,
+    campaign_id: uuid.UUID,
+    search: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    content = participation_service.export_participations_xlsx(
+        db, tenant_id, campaign_id, current_user, search
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="participantes.xlsx"'},
+    )
 
 
 @router.post(

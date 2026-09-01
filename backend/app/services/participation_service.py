@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
@@ -17,9 +17,11 @@ from app.schemas.participation import (
     DrawRequest,
     DrawResponse,
     ExternalWinnerItem,
+    PaginatedParticipations,
     ParticipationCreate,
     ParticipationListItem,
     ParticipationResponse,
+    ParticipationRow,
     WinnerResponse,
 )
 from app.services import cufe_service, ocr_service
@@ -337,6 +339,108 @@ def list_participations(
         items = [item for item in items if item.eligible == eligible]
 
     return items
+
+
+def _participations_query(db: Session, campaign_id: uuid.UUID, search: str | None):
+    q = (
+        db.query(Participation, Participant, Invoice)
+        .join(Participant, Participation.participant_id == Participant.id)
+        .join(Invoice, Participation.invoice_id == Invoice.id)
+        .filter(Participation.campaign_id == campaign_id)
+    )
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        q = q.filter(or_(
+            Participant.cedula.ilike(like),
+            Participant.full_name.ilike(like),
+            Participant.phone_wa.ilike(like),
+            Invoice.cufe.ilike(like),
+            Invoice.pos_nit.ilike(like),
+        ))
+    return q
+
+
+def _row_from(participation, participant, invoice) -> ParticipationRow:
+    acc = (participation.rules_applied or {}).get("accumulated_total")
+    return ParticipationRow(
+        id=participation.id,
+        participant_cedula=participant.cedula,
+        participant_name=participant.full_name,
+        participant_phone=participant.phone_wa,
+        invoice_cufe=invoice.cufe,
+        invoice_amount=invoice.amount,
+        invoice_date=invoice.invoice_date,
+        pos_nit=invoice.pos_nit,
+        tickets=participation.tickets,
+        eligible=_is_eligible(participation),
+        is_winner=participation.is_winner,
+        winner_prize=participation.winner_prize,
+        accumulated_total=acc,
+        created_at=participation.created_at,
+    )
+
+
+def list_participations_paginated(
+    db: Session, tenant_id: uuid.UUID, campaign_id: uuid.UUID, current_user: User,
+    page: int = 1, limit: int = 50, search: str | None = None,
+) -> PaginatedParticipations:
+    _check_read_access(current_user, tenant_id)
+    _get_campaign_admin(db, tenant_id, campaign_id)
+
+    limit = max(1, min(limit, 200))
+    page = max(1, page)
+    q = _participations_query(db, campaign_id, search)
+    total = q.count()
+    rows = (
+        q.order_by(Participation.created_at.desc())
+        .offset((page - 1) * limit).limit(limit).all()
+    )
+    items = [_row_from(p, pa, inv) for p, pa, inv in rows]
+    pages = max(1, (total + limit - 1) // limit)
+    return PaginatedParticipations(items=items, total=total, page=page, pages=pages)
+
+
+def export_participations_xlsx(
+    db: Session, tenant_id: uuid.UUID, campaign_id: uuid.UUID, current_user: User,
+    search: str | None = None,
+) -> bytes:
+    import io
+    from openpyxl import Workbook
+
+    _check_read_access(current_user, tenant_id)
+    _get_campaign_admin(db, tenant_id, campaign_id)
+
+    rows = _participations_query(db, campaign_id, search).order_by(Participation.created_at.desc()).all()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Participantes"
+    ws.append([
+        "Cédula", "Nombre", "Celular", "CUFE", "Monto factura", "Fecha factura",
+        "NIT POS", "Boletas", "Elegible", "Ganador", "Premio",
+        "Monto acumulado", "Fecha participación",
+    ])
+    for p, pa, inv in rows:
+        acc = (p.rules_applied or {}).get("accumulated_total")
+        ws.append([
+            pa.cedula,
+            pa.full_name or "",
+            pa.phone_wa or "",
+            inv.cufe,
+            float(inv.amount) if inv.amount is not None else "",
+            inv.invoice_date.strftime("%Y-%m-%d") if inv.invoice_date else "",
+            inv.pos_nit or "",
+            p.tickets,
+            "Sí" if _is_eligible(p) else "No",
+            "Sí" if p.is_winner else "No",
+            p.winner_prize or "",
+            float(acc) if acc is not None else "",
+            p.created_at.strftime("%Y-%m-%d %H:%M") if p.created_at else "",
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Draw (admin)

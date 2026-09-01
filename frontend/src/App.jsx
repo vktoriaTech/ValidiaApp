@@ -6,6 +6,7 @@ import DashboardPage from './pages/dashboard/DashboardPage'
 import ClientesPage from './pages/clientes/ClientesPage'
 import ClienteDetailPage from './pages/clientes/ClienteDetailPage'
 import CampaignsPage from './pages/campaigns/CampaignsPage'
+import ParticipantsPage from './pages/campaigns/ParticipantsPage'
 import POSPage from './pages/pos/POSPage'
 import UsersPage from './pages/users/UsersPage'
 import ConfiguracionPage from './pages/configuracion/ConfiguracionPage'
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="clientes" element={<ClientesPage />} />
         <Route path="clientes/:clienteId" element={<ClienteDetailPage />} />
         <Route path="campaigns" element={<CampaignsPage />} />
+        <Route path="campaigns/:campaignId/participants" element={<ParticipantsPage />} />
         <Route path="pos" element={<POSPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="configuracion" element={<ConfiguracionPage />} />
