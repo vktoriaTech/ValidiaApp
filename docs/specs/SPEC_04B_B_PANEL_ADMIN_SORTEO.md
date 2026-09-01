@@ -53,12 +53,32 @@ Se agrega, según el estado de la actividad:
   dentro del modal de detalle; carga de participantes/ganadores al abrir el
   detalle de una actividad no borrador.
 
+## 3.1 Vista dedicada de participantes (absorbe Fase 5)
+
+Con miles/millones de participantes, la lista no cabe en el modal. Se agrega:
+
+- Botón **"Participantes"** en el footer del detalle → navega a la ruta
+  `/campaigns/:campaignId/participants` (dentro del Shell autenticado), pasando
+  `tenantId` y `campaignName` por estado de navegación.
+- **Vista `ParticipantsPage`** en modo tabla con toda la info del participante +
+  su factura: cédula, nombre, celular, CUFE, monto factura, fecha factura, NIT
+  POS, boletas, acumulado, elegible, ganador, fecha de participación.
+- **Paginación** server-side: 50 por página (`page`/`limit`, tope 200).
+- **Búsqueda** server-side por cédula, nombre, celular, CUFE o NIT POS.
+- **Export a Excel** (`GET …/participations/export`, openpyxl) con las mismas
+  columnas, respetando el filtro de búsqueda activo. Botón arriba de la tabla.
+
+El endpoint `GET …/participations` pasa a devolver `PaginatedParticipations`
+(`items`, `total`, `page`, `pages`); el modal de detalle solo muestra el
+contador total y delega el listado a la vista dedicada.
+
 ## 4. Fuera de alcance
 
-- Export a Excel de participantes → Fase 5 (spec/إصدar aparte).
 - Cierre externo (notarial) con carga manual de ganadores: el backend lo soporta
   (`DrawRequest.winners`), pero la UI de este spec cubre solo el cierre
   `system` (sorteo automático). El externo se documenta cuando se construya.
+- Filtros avanzados por columna (solo elegibles, solo ganadores): se evalúan
+  después; hoy se muestra todo con búsqueda por texto.
 
 ## 5. Casos de prueba (manuales para el demo; automatizar en DT-001)
 
