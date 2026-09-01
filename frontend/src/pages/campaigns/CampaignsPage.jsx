@@ -8,6 +8,11 @@ import {
   updateCampaignStatus,
 } from '../../services/campaignService'
 import { getActivePOS } from '../../services/posService'
+import {
+  getParticipations,
+  runDraw,
+  getWinners,
+} from '../../services/participacionAdminService'
 import { getTenants } from '../../services/tenantService'
 import { getBrands } from '../../services/brandService'
 import Table from '../../components/ui/Table'
@@ -142,6 +147,13 @@ export default function CampaignsPage() {
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailTenantId, setDetailTenantId] = useState(null)
   const [detailCampaign, setDetailCampaign] = useState(null)
+  const [detailParticipations, setDetailParticipations] = useState([])
+  const [detailWinners, setDetailWinners] = useState([])
+  const [detailPartLoading, setDetailPartLoading] = useState(false)
+  const [drawLoading, setDrawLoading] = useState(false)
+  const [drawError, setDrawError] = useState('')
+  const [closeConfirm, setCloseConfirm] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
 
@@ -515,15 +527,82 @@ export default function CampaignsPage() {
     setDetailOpen(true)
     setDetailError('')
     setDetailCampaign(null)
+    setDetailParticipations([])
+    setDetailWinners([])
+    setDrawError('')
+    setLinkCopied(false)
     setDetailLoading(true)
     try {
       const data = await getCampaign(campaignTenantId, campaign.id)
       setDetailCampaign(data)
+      // Participantes y ganadores solo aplican a actividades ya en operación.
+      if (['active', 'paused', 'closed', 'archived'].includes(data.status)) {
+        loadParticipationData(campaignTenantId, campaign.id)
+      }
     } catch {
       setDetailError('No fue posible cargar el detalle de la actividad.')
     } finally {
       setDetailLoading(false)
     }
+  }
+
+  async function loadParticipationData(tenantId, campaignId) {
+    setDetailPartLoading(true)
+    try {
+      const [parts, wins] = await Promise.all([
+        getParticipations(tenantId, campaignId).catch(() => []),
+        getWinners(tenantId, campaignId).catch(() => []),
+      ])
+      setDetailParticipations(parts || [])
+      setDetailWinners(wins || [])
+    } finally {
+      setDetailPartLoading(false)
+    }
+  }
+
+  async function handleCloseCampaign() {
+    if (!detailCampaign) return
+    setDrawError('')
+    setStatusUpdatingId(detailCampaign.id)
+    try {
+      await updateCampaignStatus(detailTenantId, detailCampaign.id, { status: 'closed' })
+      const data = await getCampaign(detailTenantId, detailCampaign.id)
+      setDetailCampaign(data)
+      await refreshCurrentList()
+    } catch (err) {
+      setDrawError(err?.response?.data?.detail || 'No fue posible cerrar la actividad.')
+    } finally {
+      setStatusUpdatingId(null)
+      setCloseConfirm(false)
+    }
+  }
+
+  async function handleRunDraw() {
+    if (!detailCampaign) return
+    setDrawError('')
+    setDrawLoading(true)
+    try {
+      const res = await runDraw(detailTenantId, detailCampaign.id)
+      setDetailWinners(res.winners || [])
+      await loadParticipationData(detailTenantId, detailCampaign.id)
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      setDrawError(
+        detail === 'no_eligible_participations'
+          ? 'No hay participaciones elegibles para sortear.'
+          : detail || 'No fue posible ejecutar el sorteo.',
+      )
+    } finally {
+      setDrawLoading(false)
+    }
+  }
+
+  function copyParticipationLink() {
+    if (!detailCampaign) return
+    const url = `${window.location.origin}/participar/${detailCampaign.id}`
+    navigator.clipboard?.writeText(url)
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 2000)
   }
 
   function closeDetail() {
@@ -1569,13 +1648,100 @@ export default function CampaignsPage() {
               </p>
             </div>
 
-            <div className="mt-2 flex justify-end gap-3">
+            {/* Link de participación — para compartir con los participantes */}
+            {detailCampaign.status === 'active' && (
+              <div>
+                <p className="text-xs text-gray-400">Link de participación</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <code className="flex-1 truncate rounded bg-v-gray-50 px-2 py-1 text-xs text-v-night">
+                    {`${window.location.origin}/participar/${detailCampaign.id}`}
+                  </code>
+                  <Button type="button" variant="secondary" onClick={copyParticipationLink} className="!px-3 !py-1 text-xs">
+                    {linkCopied ? 'Copiado' : 'Copiar'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Participantes */}
+            {['active', 'paused', 'closed', 'archived'].includes(detailCampaign.status) && (
+              <div>
+                <p className="text-xs text-gray-400">
+                  Participantes {detailParticipations.length > 0 && `(${detailParticipations.length})`}
+                </p>
+                {detailPartLoading ? (
+                  <p className="mt-1 text-sm text-gray-400">Cargando participantes...</p>
+                ) : detailParticipations.length === 0 ? (
+                  <p className="mt-1 text-sm text-gray-400">Aún no hay participaciones registradas.</p>
+                ) : (
+                  <div className="mt-1 max-h-56 overflow-y-auto rounded-lg border border-v-border">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-v-gray-50 text-xs text-gray-500">
+                        <tr>
+                          <th className="px-3 py-2">Cédula</th>
+                          <th className="px-3 py-2">Nombre</th>
+                          <th className="px-3 py-2 text-right">Boletas</th>
+                          <th className="px-3 py-2 text-center">Elegible</th>
+                          <th className="px-3 py-2 text-center">Ganador</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detailParticipations.map((p) => (
+                          <tr key={p.id} className="border-t border-v-border">
+                            <td className="px-3 py-2">{p.participant_cedula}</td>
+                            <td className="px-3 py-2">{p.participant_name || '—'}</td>
+                            <td className="px-3 py-2 text-right">{p.tickets}</td>
+                            <td className="px-3 py-2 text-center">{p.eligible ? 'Sí' : 'No'}</td>
+                            <td className="px-3 py-2 text-center">{p.is_winner ? '🏆' : ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Ganadores */}
+            {detailWinners.length > 0 && (
+              <div>
+                <p className="text-xs text-gray-400">Ganadores</p>
+                <ul className="mt-1 space-y-1">
+                  {detailWinners.map((w, i) => (
+                    <li key={`${w.participant_id}-${i}`} className="rounded-lg bg-v-magenta/10 px-3 py-2 text-sm">
+                      <span className="font-semibold text-v-magenta">{w.prize}</span> — {w.participant_name || 'Sin nombre'} (CC {w.cedula}), {w.tickets} boleta(s)
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {drawError && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{drawError}</p>
+            )}
+
+            <div className="mt-2 flex flex-wrap justify-end gap-3">
               <Button type="button" variant="secondary" onClick={closeDetail}>
                 Cerrar
               </Button>
               {detailCampaign.status === 'draft' && (
                 <Button type="button" onClick={() => openEditWizard(detailCampaign)}>
                   Editar actividad
+                </Button>
+              )}
+              {['active', 'paused'].includes(detailCampaign.status) && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={statusUpdatingId === detailCampaign.id}
+                  onClick={() => setCloseConfirm(true)}
+                >
+                  Cerrar actividad
+                </Button>
+              )}
+              {detailCampaign.status === 'closed' && detailWinners.length === 0 && (
+                <Button type="button" disabled={drawLoading} onClick={handleRunDraw}>
+                  {drawLoading ? 'Sorteando...' : 'Ejecutar sorteo'}
                 </Button>
               )}
             </div>
@@ -1591,6 +1757,17 @@ export default function CampaignsPage() {
           onCancel={() => setConfirmCampaign(null)}
           onConfirm={confirmActivate}
           confirming={statusUpdatingId === confirmCampaign.id}
+        />
+      )}
+
+      {closeConfirm && detailCampaign && (
+        <ConfirmModal
+          isOpen={closeConfirm}
+          title="Cerrar actividad"
+          message={`¿Cerrar "${detailCampaign.name}"? No se recibirán más participaciones y quedará lista para ejecutar el sorteo. Esta acción no se puede revertir.`}
+          onCancel={() => setCloseConfirm(false)}
+          onConfirm={handleCloseCampaign}
+          confirming={statusUpdatingId === detailCampaign.id}
         />
       )}
 
