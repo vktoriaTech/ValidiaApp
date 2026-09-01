@@ -178,6 +178,17 @@ def create_participation_from_images(
         detail = None
 
     if detail is not None:
+        # DEBUG temporal: exponer qué recibió el OCR para diagnosticar por qué
+        # la extracción falla aunque Textract lea bien en la consola.
+        import re as _re
+        raw = fields.get("raw_text") or ""
+        _hex_runs = _re.findall(r"[0-9a-fA-F]+", _re.sub(r"\s", "", raw))
+        _longest = max((len(h) for h in _hex_runs), default=0)
+        detail = (
+            f"{detail} [debug: raw_len={len(raw)} lineas={raw.count(chr(10))+1} "
+            f"tiene_palabra_cufe={'cufe' in raw.lower()} hex_mas_largo={_longest} "
+            f"nit_detectado={nit_emisor or '-'}]"
+        )
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
 
     payload = ParticipationCreate(
