@@ -164,11 +164,21 @@ def create_participation_from_images(
     cufe = (fields.get("cufe") or "").replace(" ", "")
     nit_emisor = (fields.get("nit_emisor") or "").strip()
 
-    if len(cufe) != 96 or not nit_emisor:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No pudimos leer el CUFE o el NIT de la factura. Reenvía una foto más nítida donde se vean ambos.",
+    cufe_ok = len(cufe) == 96
+    if not cufe_ok and not nit_emisor:
+        detail = "No pudimos leer el CUFE ni el NIT. Reenvía una foto más nítida donde se vean ambos."
+    elif not cufe_ok:
+        detail = (
+            f"No pudimos leer el CUFE completo (detectamos {len(cufe)} de 96 caracteres). "
+            "Reenvía una foto más nítida y cercana del CUFE."
         )
+    elif not nit_emisor:
+        detail = "No pudimos leer el NIT del emisor. Reenvía una foto donde se vea el NIT."
+    else:
+        detail = None
+
+    if detail is not None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
 
     payload = ParticipationCreate(
         cufe=cufe,
