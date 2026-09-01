@@ -128,6 +128,7 @@ export default function ParticipantsPage() {
               <th className="px-3 py-2">Cédula</th>
               <th className="px-3 py-2">Nombre</th>
               <th className="px-3 py-2">Celular</th>
+              <th className="px-3 py-2">Correo</th>
               <th className="px-3 py-2">CUFE</th>
               <th className="px-3 py-2 text-right">Monto factura</th>
               <th className="px-3 py-2">Fecha factura</th>
@@ -141,15 +142,16 @@ export default function ParticipantsPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={12} className="px-3 py-6 text-center text-gray-400">Cargando...</td></tr>
+              <tr><td colSpan={13} className="px-3 py-6 text-center text-gray-400">Cargando...</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={12} className="px-3 py-6 text-center text-gray-400">Sin participantes.</td></tr>
+              <tr><td colSpan={13} className="px-3 py-6 text-center text-gray-400">Sin participantes.</td></tr>
             ) : (
               rows.map((r) => (
                 <tr key={r.id} className="border-t border-v-border hover:bg-v-gray-50">
                   <td className="px-3 py-2">{r.participant_cedula}</td>
                   <td className="px-3 py-2">{r.participant_name || '—'}</td>
                   <td className="px-3 py-2">{r.participant_phone || '—'}</td>
+                  <td className="px-3 py-2">{r.participant_email || '—'}</td>
                   <td className="px-3 py-2 font-mono text-xs" title={r.invoice_cufe}>{r.invoice_cufe?.slice(0, 12)}…</td>
                   <td className="px-3 py-2 text-right">{fmtMoney(r.invoice_amount)}</td>
                   <td className="px-3 py-2">{fmtDate(r.invoice_date)}</td>

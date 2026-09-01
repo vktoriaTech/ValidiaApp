@@ -50,6 +50,7 @@ class ParticipationRow(BaseModel):
     participant_cedula: str
     participant_name: str | None = None
     participant_phone: str | None = None
+    participant_email: str | None = None
     invoice_cufe: str
     invoice_amount: Decimal | None = None
     invoice_date: datetime | None = None

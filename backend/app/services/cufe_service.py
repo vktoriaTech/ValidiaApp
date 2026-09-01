@@ -93,6 +93,22 @@ def _extract_pos_nit(result: dict) -> str:
     return str(raw or "").strip()
 
 
+def extract_participant_fields(result: dict) -> dict:
+    """Datos del Adquiriente/Comprador que trae la factura DIAN — se usan para
+    completar el perfil del participante automáticamente (nombre, celular,
+    correo), sin pedírselos en la página de participación. La cédula la aporta
+    el participante y coincide con el Número de Documento del adquiriente."""
+    def clean(k):
+        return (result.get(k) or "").strip() or None
+    return {
+        "full_name": clean("receptor_razon_social"),
+        "phone": clean("receptor_telefono"),
+        "email": clean("receptor_correo"),
+        "address": clean("receptor_direccion"),
+        "document": clean("receptor_numero_documento"),
+    }
+
+
 def extract_invoice_fields(result: dict) -> dict:
     """Public wrapper used by participation_service to build an Invoice from
     a raw DIAN validation payload, without going through validate_and_store
