@@ -23,17 +23,43 @@ def _check_access(user: User) -> None:
         )
 
 
-def _extract_amount(result: dict) -> Decimal | None:
-    totales = result.get("totales")
-    if not isinstance(totales, dict):
+def _parse_money(raw) -> Decimal | None:
+    """Parsea montos en formato colombiano/US. El scraper devuelve cosas como
+    '530.814,00', '$530,814' o '404.259,00'. Regla: si hay coma y punto, el
+    separador más a la derecha es el decimal; el otro es de miles."""
+    import re
+    s = re.sub(r"[^\d.,]", "", str(raw))
+    if not s:
         return None
-    raw = totales.get("total")
-    if raw is None:
-        return None
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    elif "," in s:
+        parts = s.split(",")
+        s = s.replace(",", ".") if (len(parts) == 2 and len(parts[-1]) == 2) else s.replace(",", "")
+    elif "." in s:
+        parts = s.split(".")
+        if not (len(parts) == 2 and len(parts[-1]) == 2):
+            s = s.replace(".", "")
     try:
-        return Decimal(str(raw))
+        return Decimal(s)
     except InvalidOperation:
         return None
+
+
+def _extract_amount(result: dict) -> Decimal | None:
+    # El scraper devuelve el total plano en `total_factura_cop` (formato COP).
+    # Se mantienen fallbacks por si cambia la forma de la respuesta.
+    raw = (
+        result.get("total_factura_cop")
+        or result.get("total_neto")
+        or (result.get("totales") or {}).get("total")
+    )
+    if raw is None:
+        return None
+    return _parse_money(raw)
 
 
 def _extract_invoice_date(result: dict) -> datetime | None:
@@ -58,10 +84,13 @@ def _extract_invoice_date(result: dict) -> datetime | None:
 
 
 def _extract_pos_nit(result: dict) -> str:
-    emisor = result.get("emisor")
-    if isinstance(emisor, dict):
-        return str(emisor.get("nit") or "")
-    return ""
+    # El scraper devuelve el NIT del emisor plano en `emisor_nit`. El POS se
+    # empareja por este NIT. Se mantiene el fallback anidado por robustez.
+    raw = result.get("emisor_nit")
+    if not raw:
+        emisor = result.get("emisor")
+        raw = emisor.get("nit") if isinstance(emisor, dict) else None
+    return str(raw or "").strip()
 
 
 def extract_invoice_fields(result: dict) -> dict:
