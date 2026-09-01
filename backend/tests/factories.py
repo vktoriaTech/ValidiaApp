@@ -178,9 +178,10 @@ def sorteo_rules(prizes: list[dict], **overrides) -> dict:
 
 
 def fake_dian_response(amount, invoice_date: datetime | None = None, pos_nit: str = "900123456") -> dict:
+    # Forma PLANA, como la devuelve realmente el microservicio CUFE.
     return {
         "estado_dian": "Valida",
-        "emisor": {"nit": pos_nit},
-        "totales": {"total": str(amount)},
+        "emisor_nit": pos_nit,
+        "total_factura_cop": str(amount),
         "fecha_emision": (invoice_date or datetime.now(timezone.utc)).isoformat(),
     }
