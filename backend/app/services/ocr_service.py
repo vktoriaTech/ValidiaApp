@@ -66,14 +66,38 @@ def _extract_cufe(text: str) -> tuple[str | None, list[str]]:
 
 
 def _extract_nit(text: str) -> tuple[str | None, list[str]]:
-    """Busca NITs (7-10 dígitos). En una factura aparecen el del emisor y el del
-    receptor; se devuelven todos como candidatos y el primero como mejor guess
-    (el emisor suele imprimirse primero, arriba del documento)."""
+    """Busca el NIT del emisor. En una factura hay varios NITs (emisor,
+    adquirente, proveedor tecnológico). Se toleran puntos de miles y el dígito
+    de verificación tras '-' (la clase `[0-9.]` se detiene antes del '-', así que
+    900.061.224-9 → 900061224). Se prioriza el NIT del emisor y se descartan los
+    que están junto a etiquetas de proveedor/adquirente/receptor."""
+    def clean(s: str) -> str:
+        return re.sub(r"[^0-9]", "", s)
+
     candidates: list[str] = []
-    for m in re.finditer(r"NIT[^0-9]{0,12}(\d{7,10})", text, re.IGNORECASE):
-        nit = m.group(1)
-        if nit not in candidates:
-            candidates.append(nit)
+
+    # 1) NIT rotulado explícitamente como del emisor.
+    for pat in (
+        r"NIT[^0-9A-Za-z]{0,4}(?:del\s*)?Emisor[^0-9]{0,8}([0-9][0-9.]{6,12})",
+        r"Emisor[^0-9]{0,30}?([0-9][0-9.]{6,12})",
+    ):
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            d = clean(m.group(1))
+            if 8 <= len(d) <= 10 and d not in candidates:
+                candidates.append(d)
+
+    # 2) Cualquier NIT, descartando los que siguen a etiquetas de un tercero
+    # (proveedor tecnológico, adquirente/receptor).
+    _THIRD_PARTY = ("proveedor", "tecnolog", "adquir", "receptor", "cliente")
+    for m in re.finditer(r"([A-Za-z ]{0,25})NIT[^0-9]{0,8}([0-9][0-9.]{6,12})", text, re.IGNORECASE):
+        prefix = (m.group(1) or "").lower()
+        if any(w in prefix for w in _THIRD_PARTY):
+            continue
+        d = clean(m.group(2))
+        if 8 <= len(d) <= 10 and d not in candidates:
+            candidates.append(d)
+
     best = candidates[0] if candidates else None
     return best, candidates
 
