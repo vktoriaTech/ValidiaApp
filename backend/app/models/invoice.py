@@ -32,6 +32,7 @@ class Invoice(BaseModel):
     invoice_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     raw_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     image_s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pdf_s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     validation_status: Mapped[ValidationStatus] = mapped_column(
         Enum(ValidationStatus, name="validation_status"),
         nullable=False,

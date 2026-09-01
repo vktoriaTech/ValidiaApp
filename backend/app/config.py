@@ -21,8 +21,9 @@ class Settings(BaseSettings):
 
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
-    AWS_REGION: str = "us-east-1"
-    AWS_S3_BUCKET: str = "validia-evidencias"
+    AWS_REGION: str = "us-east-1"          # Textract
+    AWS_S3_REGION: str = "us-east-2"       # bucket S3 (Ohio, junto al EC2)
+    AWS_S3_BUCKET: str = "validia"
 
     WHATSAPP_TOKEN: str = ""
     WHATSAPP_VERIFY_TOKEN: str = ""

@@ -141,6 +141,18 @@ def validate_and_store(db: Session, tenant_id: uuid.UUID, cufe: str, nit_emisor:
 
     invoice_id: uuid.UUID | None = None
     if result.get("estado_dian") == "Valida":
+        # DT-006: PDF a S3, se saca del raw_data para no inflar el JSONB.
+        pdf_b64 = result.pop("pdf_base64", None)
+        pdf_s3_key = None
+        if pdf_b64:
+            try:
+                import base64
+                from app.services import s3_service
+                pdf_s3_key = s3_service.upload_bytes(
+                    f"invoices/{cufe}/pdf.pdf", base64.b64decode(pdf_b64), "application/pdf"
+                )
+            except (ValueError, TypeError):
+                pdf_s3_key = None
         invoice = Invoice(
             tenant_id=tenant_id,
             participant_id=None,
@@ -149,6 +161,7 @@ def validate_and_store(db: Session, tenant_id: uuid.UUID, cufe: str, nit_emisor:
             amount=_extract_amount(result),
             invoice_date=_extract_invoice_date(result),
             raw_data=result,
+            pdf_s3_key=pdf_s3_key,
             validation_status=ValidationStatus.accepted,
         )
         db.add(invoice)

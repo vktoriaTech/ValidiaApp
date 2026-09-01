@@ -24,7 +24,7 @@ from app.schemas.participation import (
     ParticipationRow,
     WinnerResponse,
 )
-from app.services import cufe_service, ocr_service
+from app.services import cufe_service, ocr_service, s3_service
 from app.services.rules import get_rule_module
 from app.services.rules.base import WinnerAssignment
 
@@ -96,7 +96,9 @@ def _get_or_create_participant(
     return participant
 
 
-def _get_or_create_invoice(db: Session, tenant_id: uuid.UUID, cufe: str, nit_emisor: str) -> Invoice:
+def _get_or_create_invoice(
+    db: Session, tenant_id: uuid.UUID, cufe: str, nit_emisor: str, image_s3_key: str | None = None
+) -> Invoice:
     existing = db.query(Invoice).filter(
         Invoice.tenant_id == tenant_id,
         Invoice.cufe == cufe,
@@ -112,6 +114,19 @@ def _get_or_create_invoice(db: Session, tenant_id: uuid.UUID, cufe: str, nit_emi
             detail="El CUFE no es válido o no fue encontrado en la DIAN",
         )
 
+    # DT-006: el PDF viene en base64; se sube a S3 y se saca del raw_data para
+    # no inflar el JSONB. Best-effort: si S3 falla, la participación sigue.
+    pdf_b64 = result.pop("pdf_base64", None)
+    pdf_s3_key = None
+    if pdf_b64:
+        try:
+            import base64
+            pdf_s3_key = s3_service.upload_bytes(
+                f"invoices/{cufe}/pdf.pdf", base64.b64decode(pdf_b64), "application/pdf"
+            )
+        except (ValueError, TypeError):
+            pdf_s3_key = None
+
     fields = cufe_service.extract_invoice_fields(result)
     invoice = Invoice(
         tenant_id=tenant_id,
@@ -121,6 +136,8 @@ def _get_or_create_invoice(db: Session, tenant_id: uuid.UUID, cufe: str, nit_emi
         amount=fields["amount"],
         invoice_date=fields["invoice_date"],
         raw_data=result,
+        image_s3_key=image_s3_key,
+        pdf_s3_key=pdf_s3_key,
         validation_status=ValidationStatus.accepted,
     )
     db.add(invoice)
@@ -182,6 +199,15 @@ def create_participation_from_images(
     if detail is not None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
 
+    # DT-006: guardar la(s) foto(s) enviada(s) en S3 (best-effort), llaveadas
+    # por CUFE. Las llaves se asocian a la factura al crearla.
+    image_keys = []
+    for i, img in enumerate(images):
+        key = s3_service.upload_bytes(f"invoices/{cufe}/img-{i}.jpg", img, "image/jpeg")
+        if key:
+            image_keys.append(key)
+    image_s3_key = ",".join(image_keys) or None
+
     payload = ParticipationCreate(
         cufe=cufe,
         nit_emisor=nit_emisor,
@@ -190,11 +216,12 @@ def create_participation_from_images(
         phone_wa=phone_wa,
         channel=channel,
     )
-    return create_participation(db, campaign_id, payload)
+    return create_participation(db, campaign_id, payload, image_s3_key=image_s3_key)
 
 
 def create_participation(
-    db: Session, campaign_id: uuid.UUID, payload: ParticipationCreate
+    db: Session, campaign_id: uuid.UUID, payload: ParticipationCreate,
+    image_s3_key: str | None = None,
 ) -> ParticipationResponse:
     campaign = _get_campaign_public(db, campaign_id)
 
@@ -216,7 +243,7 @@ def create_participation(
     if acceptance is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="terms_not_accepted")
 
-    invoice = _get_or_create_invoice(db, campaign.tenant_id, payload.cufe, payload.nit_emisor)
+    invoice = _get_or_create_invoice(db, campaign.tenant_id, payload.cufe, payload.nit_emisor, image_s3_key)
 
     # Completar el perfil del participante con los datos del Adquiriente que trae
     # la factura DIAN (nombre, celular, correo) — no se piden en la LP. Solo se
