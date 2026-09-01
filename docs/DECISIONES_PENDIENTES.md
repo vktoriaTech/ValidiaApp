@@ -11,6 +11,17 @@ _(ninguna)_
 
 ## Resueltas
 
+### D-008b · ¿Se pueden editar actividades activas/pausadas?
+**Origen:** operación real (corregir T&C, fechas, sumar comercios sin borrar/recrear) · **Fecha:** 2026-09-01 · **Resuelta:** 2026-09-01
+
+**Contexto:** el backend solo permitía editar actividades en `draft` (`_require_draft`), obligando a hacer ajustes por SQL o a borrar/recrear. En producción es inviable: hay casos legítimos de ajustar T&C, extender fechas o incluir comercios con la actividad ya activa.
+
+**Decisión:** **abierto con aviso.** Se permite editar actividades en `draft`, `active` y `paused` (se bloquea solo `closed`/`archived`, donde el sorteo ya corrió o la actividad es final). Al editar una activa/pausada, el frontend muestra una advertencia de que los cambios pueden afectar a los participantes ya registrados, y el cambio queda auditado (`campaign.updated`). Los candados finos por campo (p. ej. impedir bajar un umbral que ya generó boletas) quedan como mejora futura.
+
+**Impacto:** `_require_draft` → `_require_editable` (permite draft/active/paused). Frontend: botón "Editar" visible en activas/pausadas con modal de confirmación. Match de POS por `nit_emisor` (no del cliente) queda confirmado como el comportamiento correcto (ya implementado).
+
+---
+
 ### D-008 · Captura de la factura — ¿QR, OCR o librería? ¿cuántos datos pide al usuario? ¿flujo web vs WhatsApp?
 **Origen:** construcción del flujo del participante (demo Cosmocentro) · **Fecha:** 2026-08-31 · **Resuelta:** 2026-08-31
 

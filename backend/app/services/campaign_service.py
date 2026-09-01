@@ -109,10 +109,21 @@ def _get_campaign(db: Session, tenant_id: uuid.UUID, campaign_id: uuid.UUID) -> 
     return campaign
 
 
-def _require_draft(campaign: Campaign) -> None:
-    if campaign.status != CampaignStatus.draft:
+# Estados en los que una actividad se puede editar. Se permite editar activas y
+# pausadas (D-008b: "abierto con aviso" — el frontend advierte que puede afectar
+# a participantes actuales, y el cambio queda auditado). Solo se bloquean las
+# cerradas/archivadas, donde el sorteo ya se ejecutó o la actividad es final.
+_EDITABLE_STATUSES = {
+    CampaignStatus.draft,
+    CampaignStatus.active,
+    CampaignStatus.paused,
+}
+
+
+def _require_editable(campaign: Campaign) -> None:
+    if campaign.status not in _EDITABLE_STATUSES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Solo se pueden editar campañas en estado draft")
+                            detail="No se puede editar una actividad cerrada o archivada")
 
 
 def _validate_brand(db: Session, tenant_id: uuid.UUID, brand_id: uuid.UUID | None) -> None:
@@ -409,7 +420,7 @@ def update_campaign(
 ) -> CampaignResponse:
     _check_write_access(current_user, tenant_id)
     campaign = _get_campaign(db, tenant_id, campaign_id)
-    _require_draft(campaign)
+    _require_editable(campaign)
 
     if payload.name is not None:          campaign.name = payload.name
     if payload.description is not None:   campaign.description = payload.description
@@ -595,7 +606,7 @@ def delete_prize(
 ) -> None:
     _check_write_access(current_user, tenant_id)
     campaign = _get_campaign(db, tenant_id, campaign_id)
-    _require_draft(campaign)
+    _require_editable(campaign)
     prize = db.query(Prize).filter(Prize.id == prize_id, Prize.campaign_id == campaign_id).first()
     if prize is None:
         raise HTTPException(status_code=404, detail="Premio no encontrado")
