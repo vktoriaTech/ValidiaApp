@@ -180,17 +180,6 @@ def create_participation_from_images(
         detail = None
 
     if detail is not None:
-        # DEBUG temporal: exponer qué recibió el OCR para diagnosticar por qué
-        # la extracción falla aunque Textract lea bien en la consola.
-        import re as _re
-        raw = fields.get("raw_text") or ""
-        _hex_runs = _re.findall(r"[0-9a-fA-F]+", _re.sub(r"\s", "", raw))
-        _longest = max((len(h) for h in _hex_runs), default=0)
-        detail = (
-            f"{detail} [debug: raw_len={len(raw)} lineas={raw.count(chr(10))+1} "
-            f"tiene_palabra_cufe={'cufe' in raw.lower()} hex_mas_largo={_longest} "
-            f"nit_detectado={nit_emisor or '-'}]"
-        )
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
 
     payload = ParticipationCreate(
@@ -228,6 +217,17 @@ def create_participation(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="terms_not_accepted")
 
     invoice = _get_or_create_invoice(db, campaign.tenant_id, payload.cufe, payload.nit_emisor)
+
+    # Completar el perfil del participante con los datos del Adquiriente que trae
+    # la factura DIAN (nombre, celular, correo) — no se piden en la LP. Solo se
+    # rellena lo que esté vacío, para no pisar datos ya capturados.
+    adq = cufe_service.extract_participant_fields(invoice.raw_data or {})
+    if adq.get("full_name") and not participant.full_name:
+        participant.full_name = adq["full_name"]
+    if adq.get("phone") and not participant.phone_wa:
+        participant.phone_wa = adq["phone"]
+    if adq.get("email") and not participant.email:
+        participant.email = adq["email"]
 
     duplicate = (
         db.query(Participation)
@@ -367,6 +367,7 @@ def _row_from(participation, participant, invoice) -> ParticipationRow:
         participant_cedula=participant.cedula,
         participant_name=participant.full_name,
         participant_phone=participant.phone_wa,
+        participant_email=participant.email,
         invoice_cufe=invoice.cufe,
         invoice_amount=invoice.amount,
         invoice_date=invoice.invoice_date,
@@ -416,7 +417,7 @@ def export_participations_xlsx(
     ws = wb.active
     ws.title = "Participantes"
     ws.append([
-        "Cédula", "Nombre", "Celular", "CUFE", "Monto factura", "Fecha factura",
+        "Cédula", "Nombre", "Celular", "Correo", "CUFE", "Monto factura", "Fecha factura",
         "NIT POS", "Boletas", "Elegible", "Ganador", "Premio",
         "Monto acumulado", "Fecha participación",
     ])
@@ -426,6 +427,7 @@ def export_participations_xlsx(
             pa.cedula,
             pa.full_name or "",
             pa.phone_wa or "",
+            pa.email or "",
             inv.cufe,
             float(inv.amount) if inv.amount is not None else "",
             inv.invoice_date.strftime("%Y-%m-%d") if inv.invoice_date else "",
