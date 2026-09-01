@@ -155,6 +155,7 @@ export default function CampaignsPage() {
   const [drawError, setDrawError] = useState('')
   const [closeConfirm, setCloseConfirm] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+  const [editWarnCampaign, setEditWarnCampaign] = useState(null)
   const navigate = useNavigate()
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
@@ -631,6 +632,22 @@ export default function CampaignsPage() {
     }
   }
 
+  // Draft se edita directo; activa/pausada pide confirmación (D-008b: editar
+  // en curso puede afectar a participantes ya registrados).
+  function requestEdit(row) {
+    if (row.status === 'draft') {
+      editFromRow(row)
+    } else {
+      setEditWarnCampaign(row)
+    }
+  }
+
+  async function confirmEdit() {
+    const row = editWarnCampaign
+    setEditWarnCampaign(null)
+    if (row) await editFromRow(row)
+  }
+
   // Opens the full creation wizard pre-populated with the campaign's current
   // data, so editing reuses every step (including prizes and POS) instead of
   // a separate reduced form. Only reachable for draft campaigns (backend
@@ -758,24 +775,24 @@ export default function CampaignsPage() {
           >
             Ver detalle
           </Button>
+          {['draft', 'active', 'paused'].includes(row.status) && (
+            <Button
+              variant="secondary"
+              onClick={() => requestEdit(row)}
+              className="!px-3 !py-1.5 text-xs"
+            >
+              Editar
+            </Button>
+          )}
           {row.status === 'draft' && (
-            <>
-              <Button
-                variant="secondary"
-                onClick={() => editFromRow(row)}
-                className="!px-3 !py-1.5 text-xs"
-              >
-                Editar
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={statusUpdatingId === row.id}
-                onClick={() => requestActivate(row)}
-                className="!px-3 !py-1.5 text-xs"
-              >
-                Activar
-              </Button>
-            </>
+            <Button
+              variant="secondary"
+              disabled={statusUpdatingId === row.id}
+              onClick={() => requestActivate(row)}
+              className="!px-3 !py-1.5 text-xs"
+            >
+              Activar
+            </Button>
           )}
           {row.status === 'active' && (
             <a
@@ -1747,8 +1764,8 @@ export default function CampaignsPage() {
                   Participantes
                 </Button>
               )}
-              {detailCampaign.status === 'draft' && (
-                <Button type="button" onClick={() => openEditWizard(detailCampaign)}>
+              {['draft', 'active', 'paused'].includes(detailCampaign.status) && (
+                <Button type="button" onClick={() => requestEdit(detailCampaign)}>
                   Editar actividad
                 </Button>
               )}
@@ -1780,6 +1797,16 @@ export default function CampaignsPage() {
           onCancel={() => setConfirmCampaign(null)}
           onConfirm={confirmActivate}
           confirming={statusUpdatingId === confirmCampaign.id}
+        />
+      )}
+
+      {editWarnCampaign && (
+        <ConfirmModal
+          isOpen={Boolean(editWarnCampaign)}
+          title="Editar actividad en curso"
+          message={`"${editWarnCampaign.name}" está ${editWarnCampaign.status === 'paused' ? 'pausada' : 'activa'}. Los cambios que hagas (fechas, POS, premios, términos) pueden afectar a los participantes que ya se registraron. ¿Deseas continuar?`}
+          onCancel={() => setEditWarnCampaign(null)}
+          onConfirm={confirmEdit}
         />
       )}
 
