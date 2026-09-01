@@ -43,6 +43,32 @@ class ParticipationListItem(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ParticipationRow(BaseModel):
+    """Fila enriquecida para la vista de participantes (SPEC-04B-B §2): toda la
+    info del participante + su factura."""
+    id: uuid.UUID
+    participant_cedula: str
+    participant_name: str | None = None
+    participant_phone: str | None = None
+    invoice_cufe: str
+    invoice_amount: Decimal | None = None
+    invoice_date: datetime | None = None
+    pos_nit: str | None = None
+    tickets: int
+    eligible: bool
+    is_winner: bool
+    winner_prize: str | None = None
+    accumulated_total: Decimal | None = None
+    created_at: datetime
+
+
+class PaginatedParticipations(BaseModel):
+    items: list[ParticipationRow]
+    total: int
+    page: int
+    pages: int
+
+
 # ── Draw ──────────────────────────────────────────────────────────────────────
 
 class ExternalWinnerItem(BaseModel):

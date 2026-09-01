@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import {
   createCampaign,
@@ -147,13 +148,14 @@ export default function CampaignsPage() {
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailTenantId, setDetailTenantId] = useState(null)
   const [detailCampaign, setDetailCampaign] = useState(null)
-  const [detailParticipations, setDetailParticipations] = useState([])
+  const [detailPartCount, setDetailPartCount] = useState(0)
   const [detailWinners, setDetailWinners] = useState([])
   const [detailPartLoading, setDetailPartLoading] = useState(false)
   const [drawLoading, setDrawLoading] = useState(false)
   const [drawError, setDrawError] = useState('')
   const [closeConfirm, setCloseConfirm] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+  const navigate = useNavigate()
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
 
@@ -527,7 +529,7 @@ export default function CampaignsPage() {
     setDetailOpen(true)
     setDetailError('')
     setDetailCampaign(null)
-    setDetailParticipations([])
+    setDetailPartCount(0)
     setDetailWinners([])
     setDrawError('')
     setLinkCopied(false)
@@ -550,14 +552,21 @@ export default function CampaignsPage() {
     setDetailPartLoading(true)
     try {
       const [parts, wins] = await Promise.all([
-        getParticipations(tenantId, campaignId).catch(() => []),
+        getParticipations(tenantId, campaignId, { limit: 1 }).catch(() => ({ total: 0 })),
         getWinners(tenantId, campaignId).catch(() => []),
       ])
-      setDetailParticipations(parts || [])
+      setDetailPartCount(parts.total || 0)
       setDetailWinners(wins || [])
     } finally {
       setDetailPartLoading(false)
     }
+  }
+
+  function openParticipants() {
+    if (!detailCampaign) return
+    navigate(`/campaigns/${detailCampaign.id}/participants`, {
+      state: { tenantId: detailTenantId, campaignName: detailCampaign.name },
+    })
   }
 
   async function handleCloseCampaign() {
@@ -1663,42 +1672,15 @@ export default function CampaignsPage() {
               </div>
             )}
 
-            {/* Participantes */}
+            {/* Participantes — resumen; el detalle vive en su propia vista */}
             {['active', 'paused', 'closed', 'archived'].includes(detailCampaign.status) && (
               <div>
-                <p className="text-xs text-gray-400">
-                  Participantes {detailParticipations.length > 0 && `(${detailParticipations.length})`}
+                <p className="text-xs text-gray-400">Participantes</p>
+                <p className="mt-1 text-sm">
+                  {detailPartLoading
+                    ? 'Cargando...'
+                    : `${detailPartCount} participación(es) registrada(s)`}
                 </p>
-                {detailPartLoading ? (
-                  <p className="mt-1 text-sm text-gray-400">Cargando participantes...</p>
-                ) : detailParticipations.length === 0 ? (
-                  <p className="mt-1 text-sm text-gray-400">Aún no hay participaciones registradas.</p>
-                ) : (
-                  <div className="mt-1 max-h-56 overflow-y-auto rounded-lg border border-v-border">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-v-gray-50 text-xs text-gray-500">
-                        <tr>
-                          <th className="px-3 py-2">Cédula</th>
-                          <th className="px-3 py-2">Nombre</th>
-                          <th className="px-3 py-2 text-right">Boletas</th>
-                          <th className="px-3 py-2 text-center">Elegible</th>
-                          <th className="px-3 py-2 text-center">Ganador</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detailParticipations.map((p) => (
-                          <tr key={p.id} className="border-t border-v-border">
-                            <td className="px-3 py-2">{p.participant_cedula}</td>
-                            <td className="px-3 py-2">{p.participant_name || '—'}</td>
-                            <td className="px-3 py-2 text-right">{p.tickets}</td>
-                            <td className="px-3 py-2 text-center">{p.eligible ? 'Sí' : 'No'}</td>
-                            <td className="px-3 py-2 text-center">{p.is_winner ? '🏆' : ''}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
               </div>
             )}
 
@@ -1724,6 +1706,11 @@ export default function CampaignsPage() {
               <Button type="button" variant="secondary" onClick={closeDetail}>
                 Cerrar
               </Button>
+              {['active', 'paused', 'closed', 'archived'].includes(detailCampaign.status) && (
+                <Button type="button" variant="secondary" onClick={openParticipants}>
+                  Participantes
+                </Button>
+              )}
               {detailCampaign.status === 'draft' && (
                 <Button type="button" onClick={() => openEditWizard(detailCampaign)}>
                   Editar actividad
