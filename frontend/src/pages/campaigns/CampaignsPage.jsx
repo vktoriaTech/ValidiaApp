@@ -619,6 +619,18 @@ export default function CampaignsPage() {
     setDetailCampaign(null)
   }
 
+  // Editar desde la fila: el item de lista no trae premios/reglas, así que se
+  // carga el detalle completo antes de abrir el wizard pre-poblado.
+  async function editFromRow(row) {
+    const tid = row.tenant_id || listTenantId
+    try {
+      const full = await getCampaign(tid, row.id)
+      openEditWizard(full)
+    } catch {
+      setError('No fue posible cargar la actividad para editar.')
+    }
+  }
+
   // Opens the full creation wizard pre-populated with the campaign's current
   // data, so editing reuses every step (including prizes and POS) instead of
   // a separate reduced form. Only reachable for draft campaigns (backend
@@ -685,7 +697,22 @@ export default function CampaignsPage() {
   }
 
   const columns = [
-    { key: 'name', header: 'Nombre', sortable: true },
+    {
+      key: 'name',
+      header: 'Nombre',
+      sortable: true,
+      render: (row) => {
+        const badge = STATUS_BADGE[row.status] || STATUS_BADGE.draft
+        return (
+          <div>
+            <Badge color={badge.color} className="!px-1.5 !py-0 !text-[10px]">
+              {badge.label}
+            </Badge>
+            <p className="mt-1 font-medium text-v-night">{row.name}</p>
+          </div>
+        )
+      },
+    },
     ...(allClientsMode
       ? [
           {
@@ -704,27 +731,14 @@ export default function CampaignsPage() {
         ACTIVITY_TYPE_LABELS[row.activity_type] || row.activity_type || '—',
     },
     {
-      key: 'status',
-      header: 'Estado',
+      key: 'starts_at',
+      header: 'Vigencia',
       sortable: true,
       render: (row) => {
-        const badge = STATUS_BADGE[row.status] || STATUS_BADGE.draft
-        return <Badge color={badge.color}>{badge.label}</Badge>
+        const s = row.starts_at ? new Date(row.starts_at).toLocaleDateString('es-CO') : '—'
+        const e = row.ends_at ? new Date(row.ends_at).toLocaleDateString('es-CO') : '—'
+        return <span className="whitespace-nowrap text-xs">{s} → {e}</span>
       },
-    },
-    {
-      key: 'starts_at',
-      header: 'Fecha inicio',
-      sortable: true,
-      render: (row) =>
-        row.starts_at ? new Date(row.starts_at).toLocaleDateString('es-CO') : '—',
-    },
-    {
-      key: 'ends_at',
-      header: 'Fecha fin',
-      sortable: true,
-      render: (row) =>
-        row.ends_at ? new Date(row.ends_at).toLocaleDateString('es-CO') : '—',
     },
     {
       key: 'updated_at',
@@ -737,22 +751,31 @@ export default function CampaignsPage() {
       header: 'Acciones',
       render: (row) => (
         <div className="flex items-center gap-2">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={() => openDetail(row)}
-            className="rounded-lg px-3 py-1.5 text-xs font-medium text-v-night hover:bg-v-gray-50"
+            className="!px-3 !py-1.5 text-xs"
           >
             Ver detalle
-          </button>
+          </Button>
           {row.status === 'draft' && (
-            <Button
-              variant="secondary"
-              disabled={statusUpdatingId === row.id}
-              onClick={() => requestActivate(row)}
-              className="!px-3 !py-1.5 text-xs"
-            >
-              Activar
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => editFromRow(row)}
+                className="!px-3 !py-1.5 text-xs"
+              >
+                Editar
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={statusUpdatingId === row.id}
+                onClick={() => requestActivate(row)}
+                className="!px-3 !py-1.5 text-xs"
+              >
+                Activar
+              </Button>
+            </>
           )}
           {row.status === 'active' && (
             <a
@@ -760,12 +783,11 @@ export default function CampaignsPage() {
               target="_blank"
               rel="noopener noreferrer"
               title="Abrir la página de registro de factura de esta actividad"
-              className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-v-magenta hover:bg-v-magenta/10"
+              className="inline-flex items-center justify-center rounded-lg border border-v-border p-2 text-v-magenta hover:bg-v-magenta/10"
             >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 11-5.656-5.656l1.5-1.5M10.172 13.828a4 4 0 010-5.656l3-3a4 4 0 115.656 5.656l-1.5 1.5" />
               </svg>
-              Link participación
             </a>
           )}
         </div>

@@ -8,6 +8,25 @@ import {
 
 const CHANNEL = 'web'
 
+const REASON_MESSAGES = {
+  pos_not_eligible: 'La factura no es de un establecimiento que participa en esta actividad.',
+  invoice_date_out_of_range: 'La fecha de la factura está fuera del periodo de la actividad.',
+  terms_not_accepted: 'Debes aceptar los términos antes de participar.',
+  invoice_amount_below_minimum: 'La compra aún no alcanza el monto mínimo para participar.',
+}
+
+// El detalle del backend puede ser un string (errores de OCR) o un objeto
+// {reason: ...} (rechazos de reglas). Se normaliza a un mensaje legible para
+// no romper el render (React no puede pintar un objeto).
+function errorMessage(err, fallback) {
+  const d = err?.response?.data?.detail
+  if (typeof d === 'string') return d
+  if (d && typeof d === 'object' && d.reason) {
+    return REASON_MESSAGES[d.reason] || 'No pudimos validar tu factura para esta actividad.'
+  }
+  return fallback
+}
+
 function Spinner() {
   return (
     <svg className="h-5 w-5 animate-spin text-white" viewBox="0 0 24 24" fill="none">
@@ -57,7 +76,7 @@ export default function ParticiparPage() {
       await acceptTerms(campaignId, { cedula: cedula.trim(), channel: CHANNEL })
       setPhase('upload')
     } catch (err) {
-      setError(err?.response?.data?.detail || 'No fue posible registrar tu aceptación.')
+      setError(errorMessage(err, 'No fue posible registrar tu aceptación.'))
     } finally {
       setBusy(false)
     }
@@ -77,7 +96,7 @@ export default function ParticiparPage() {
       setPhase('result')
     } catch (err) {
       // OCR falló o factura inválida — se pide reenviar (se queda en 'upload').
-      setError(err?.response?.data?.detail || 'No pudimos procesar la factura. Intenta con una foto más nítida.')
+      setError(errorMessage(err, 'No pudimos procesar la factura. Intenta con una foto más nítida.'))
     } finally {
       setBusy(false)
     }
