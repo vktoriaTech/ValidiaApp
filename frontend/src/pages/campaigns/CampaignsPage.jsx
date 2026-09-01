@@ -754,6 +754,20 @@ export default function CampaignsPage() {
               Activar
             </Button>
           )}
+          {row.status === 'active' && (
+            <a
+              href={`${window.location.origin}/participar/${row.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Abrir la página de registro de factura de esta actividad"
+              className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-v-magenta hover:bg-v-magenta/10"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 11-5.656-5.656l1.5-1.5M10.172 13.828a4 4 0 010-5.656l3-3a4 4 0 115.656 5.656l-1.5 1.5" />
+              </svg>
+              Link participación
+            </a>
+          )}
         </div>
       ),
     },
