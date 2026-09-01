@@ -40,8 +40,19 @@ def _extract_invoice_date(result: dict) -> datetime | None:
     raw = result.get("fecha_emision") or (result.get("emisor") or {}).get("fecha_emision")
     if not raw:
         return None
+    raw = str(raw).strip()
+    # El scraper de la DIAN devuelve la fecha en formatos locales (DD/MM/YYYY,
+    # DD-MM-YYYY), no ISO. Se prueban varios; fromisoformat es solo el último
+    # recurso. Se toma solo la parte de fecha (los primeros 10 chars) por si
+    # viene con hora.
+    candidate = raw[:10]
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(candidate, fmt)
+        except ValueError:
+            continue
     try:
-        return datetime.fromisoformat(str(raw))
+        return datetime.fromisoformat(raw)
     except ValueError:
         return None
 
