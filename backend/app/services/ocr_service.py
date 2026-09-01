@@ -32,7 +32,14 @@ def _client():
 def _detect_text(image_bytes: bytes) -> list[str]:
     client = _client()
     try:
-        resp = client.detect_document_text(Document={"Bytes": image_bytes})
+        # AnalyzeDocument (feature LAYOUT) lee el CUFE de 96 caracteres con más
+        # precisión que DetectDocumentText, que se comía un carácter en las
+        # pruebas reales. Devuelve los mismos bloques LINE. Requiere el permiso
+        # IAM textract:AnalyzeDocument.
+        resp = client.analyze_document(
+            Document={"Bytes": image_bytes},
+            FeatureTypes=["LAYOUT"],
+        )
     except (BotoCoreError, ClientError) as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
