@@ -2,7 +2,7 @@
 
 **Proyecto:** Validia MVP
 **Versión:** 0.1
-**Estado:** En implementación
+**Estado:** Implementado y en producción
 **Última actualización:** 2026-09-01
 **Depende de:** SPEC-04B (Motor de Participación §6.2–6.4), SPEC-04C (Sorteo), SPEC-04B-A (Captura)
 

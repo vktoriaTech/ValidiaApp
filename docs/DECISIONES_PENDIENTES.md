@@ -5,7 +5,33 @@
 
 ## Abiertas
 
-_(ninguna)_
+_(ninguna decisión de negocio bloqueada hoy)_
+
+## En radar — direcciones futuras conocidas (aún sin especificar)
+
+Cosas que ya sabemos que van a generar spec o ajuste, según el plan de trabajo y
+la reunión de socios del jueves. Se listan para no perderlas; se convierten en
+decisión/spec cuando se aborden.
+
+- **Participación por producto (no solo por establecimiento).** Hoy el sorteo
+  hace match por **NIT del POS** (compra en el establecimiento). La reunión pidió
+  también poder participar por **compra de un producto específico**: exige que el
+  cliente registre el **código/SKU** del producto (el mismo que sale en su
+  factura) y cruzarlo contra los ítems del CUFE. Depende de **DT-004** (el
+  servicio CUFE debe devolver el detalle de líneas) y toca **SPEC-05A** (catálogo
+  de marcas/productos/SKUs) y **SPEC-04C**. Para centros comerciales, las "marcas"
+  son los locales y los "productos" sus SKUs.
+- **Módulo de participante / bot de WhatsApp (H9).** El endpoint
+  `participate-by-image` ya es el backend reutilizable; falta el bot de WhatsApp
+  como front alterno (mismo backend) y la consulta de estado del participante
+  (DT-005). El sitio web de participación es hoy el canal de prueba y plan B.
+- **DT-007 — data de factura como activo.** Estructurar en BD toda la info de la
+  factura (ya persistida en `raw_data` + PDF en S3) asociada a la cédula, para
+  explotación de negocio (perfilamiento de consumo, insights para marcas/CC).
+- **Retención y borrado (Ley 1581 / Habeas Data).** Al guardar facturas con datos
+  personales en S3 + BD, definir política de retención y flujo de borrado
+  (`Participant.data_deletion_req`).
+- **Cierre externo (notarial)** en la UI: el backend ya soporta `DrawRequest.winners`; falta la interfaz para cargar ganadores manualmente.
 
 ---
 

@@ -8,6 +8,17 @@
 
 ---
 
+> **Dirección futura (reunión socios 2026-08-28 · ver "En radar" en DECISIONES_PENDIENTES):**
+> Este catálogo es la base para la **participación por producto**. La regla de
+> negocio pedida: el cliente registra el **código/SKU** de su producto (el mismo
+> que aparece en su factura) y el motor lo cruza contra el **detalle de líneas del
+> CUFE**. Para centros comerciales, las "marcas" son los locales y los "productos"
+> sus SKUs. Esto requiere que el servicio CUFE devuelva los ítems (**DT-004**) y
+> que `SPEC-04C` gane un tipo de elegibilidad `por_producto` además del actual por
+> monto/establecimiento. Cuando se aborde, este spec sube de versión.
+
+---
+
 ## 1. Conceptos y vocabulario
 
 ### 1.1 Sector
