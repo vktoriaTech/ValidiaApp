@@ -77,9 +77,17 @@ Al abrir el spec del flujo del participante (H9). El endpoint read-only es de ba
 
 ---
 
-## DT-006 · Persistencia en S3 del PDF de la DIAN y de la imagen enviada (post-demo)
+## DT-006 · Persistencia en S3 del PDF de la DIAN y de la imagen enviada ✅ HECHO (persistencia)
 
-**Qué es:**
+**Estado (2026-09-01):** **Resuelto en cuanto a persistencia.** El microservicio devuelve el PDF en `pdf_base64`; el backend sube a S3 el PDF (`invoices/{cufe}/pdf.pdf`) y las fotos (`invoices/{cufe}/img-N.jpg`), y guarda las llaves en `Invoice.pdf_s3_key` / `Invoice.image_s3_key`. Bucket **`validia`** (us-east-2), `s3_service` best-effort, `AWS_S3_REGION` separada de `AWS_REGION`. El PDF se saca del `raw_data` para no inflar el JSONB. Verificado en producción (PDF + 2 imágenes en el bucket). Detalle en SPEC-04B-A §7bis.
+
+**Pendiente (Fase D):** ver/descargar el PDF y la imagen desde el admin con URLs prefirmadas (`s3:GetObject` ya está en la política). Además: definir **retención/borrado** (Ley 1581 / Habeas Data) usando `Participant.data_deletion_req`.
+
+---
+
+### Contexto original (resuelto)
+
+**Qué era:**
 Hoy ni la **foto del participante** ni el **PDF oficial de la DIAN** se persisten de forma durable:
 - La foto se procesa en memoria (OCR) y se descarta.
 - El PDF de la DIAN se guarda dentro del contenedor `cufe-service`, en una carpeta efímera (`pdfs/…`) que se pierde en cada redeploy.

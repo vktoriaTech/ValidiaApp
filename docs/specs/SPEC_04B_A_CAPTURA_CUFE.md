@@ -1,11 +1,11 @@
 # SPEC-04B-A: Captura de la factura (OCR) y participación por imagen
 
 **Proyecto:** Validia MVP
-**Versión:** 0.1
-**Estado:** Implementado (documentado retroactivamente — ver nota SDD)
-**Última actualización:** 2026-08-31
+**Versión:** 0.2
+**Estado:** Implementado y en producción
+**Última actualización:** 2026-09-01
 **Depende de:** SPEC-04B (Motor de Participación), SPEC-04C (Sorteo), microservicio CUFE (repo Web-Scraping)
-**Decisión de origen:** D-008
+**Decisión de origen:** D-008 (y D-008b)
 
 ---
 
@@ -65,10 +65,39 @@ Ruta pública `/participar/:campaignId` (fuera del guard de auth), `ParticiparPa
 **Frontend:** `pages/participar/ParticiparPage.jsx`, `services/participacionService.js`, ruta en `App.jsx`.
 **Microservicio CUFE (repo Web-Scraping):** `main.py`, `scraper.py` (NIT + desencriptado), `docker-compose.yml`.
 
+## 7bis. Actualización v0.2 (2026-09-01) — lo agregado tras el primer end-to-end
+
+**Perfil del participante desde la DIAN.** La página solo pide la **cédula**; el
+nombre, celular y correo se leen del bloque *Adquiriente/Comprador* de la factura
+(`receptor_razon_social`, `receptor_telefono`, `receptor_correo`) y completan el
+`Participant` automáticamente (`cufe_service.extract_participant_fields`, aplicado
+en `create_participation`, solo rellena campos vacíos). Así los ganadores y la
+lista de participantes muestran el nombre real sin pedirlo.
+
+**Persistencia de evidencia en S3 (DT-006 — hecho).** El microservicio devuelve
+el PDF en `pdf_base64`; el backend lo sube a S3 (`invoices/{cufe}/pdf.pdf`) y lo
+saca del `raw_data` para no inflar el JSONB. Las fotos se suben a
+`invoices/{cufe}/img-N.jpg`. Las llaves quedan en `Invoice.pdf_s3_key` e
+`Invoice.image_s3_key`. Bucket `validia` (us-east-2); `s3_service` best-effort
+(si S3 falla, la participación no se cae). Config: `AWS_S3_REGION` separada de
+`AWS_REGION` (Textract en us-east-1, S3 en us-east-2).
+
+**Arreglos de robustez (bugs reales encontrados en el primer ciclo):**
+- OCR: se usa **Textract `AnalyzeDocument` (LAYOUT)**, no `DetectDocumentText`, porque este último se comía un carácter del CUFE de 96 (doble letra). El NIT tolera puntos/DV y descarta el del proveedor tecnológico/adquirente.
+- La DIAN devuelve la respuesta **plana** (`emisor_nit`, `total_factura_cop`), no anidada — los extractores se corrigieron (con fallback).
+- Fecha de la factura en formato **DD/MM/YYYY** (no ISO) — parser corregido.
+- Monto en formato COP (`530.814,00` / `$530,814`) — parser dedicado.
+- Cambios externos DIAN: NIT obligatorio en la búsqueda + PDF encriptado con el NIT como clave (desencriptado con `pikepdf`).
+- Front: el detalle de error puede ser string u objeto `{reason}` — se normaliza a mensaje legible para no romper el render.
+
+**Editar activas/pausadas (D-008b):** una actividad se puede editar en `draft`,
+`active` y `paused` (no solo draft), con advertencia en la UI. Ver D-008b.
+
 ## 8. Pendientes (fuera de alcance de este spec)
 
-- **DT-006** — persistir en S3 el PDF de la DIAN (llaveado) y la imagen enviada.
-- **DT-007** — guardar toda la data de la factura en BD, asociada a la cédula (activo de negocio).
+- **DT-006 · Fase D** — ver/descargar el PDF y la imagen desde el admin con URLs prefirmadas (la persistencia ya está hecha).
+- **DT-007** — estructurar toda la data de la factura en BD, asociada a la cédula (activo de negocio). El `raw_data` y el PDF ya se guardan; falta normalizar/explotar.
+- Guardar también la **dirección** del adquirente (requiere columna en `Participant`).
 - Endurecer los endpoints públicos antes de exponerlos a un webhook real de WhatsApp (secreto compartido) — ver nota en `campaign_service.accept_campaign_terms`.
 
 ## 9. Casos de prueba (pendientes de automatizar — DT-001)
